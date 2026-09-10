@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+.secrets/
 .env
 .env.*
 !.env.example
