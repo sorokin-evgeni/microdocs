@@ -13,8 +13,10 @@ import { IconPlus } from '@tabler/icons-react';
 
 import { createIndexedDbStore } from './storage/indexedDbStore';
 import { useBase } from './state/useBase';
+import { usePageBody } from './state/usePageBody';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
+import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
 
@@ -24,6 +26,7 @@ const BASE_ID = 'default';
 export function App() {
   const store = useMemo(() => createIndexedDbStore(BASE_ID), []);
   const base = useBase(store);
+  const page = usePageBody(store, base.selectedId);
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
     useDisclosure(false);
   const [movingId, setMovingId] = useState<PageId | null>(null);
@@ -110,7 +113,7 @@ export function App() {
             <TextInput
               value={selected.title}
               onChange={(event) =>
-                void base.renamePage(selected.id, event.currentTarget.value)
+                base.renamePage(selected.id, event.currentTarget.value)
               }
               placeholder="Без названия"
               variant="unstyled"
@@ -118,9 +121,13 @@ export function App() {
               styles={{ input: { fontWeight: 700, fontSize: 28 } }}
               aria-label="Заголовок страницы"
             />
-            <Text size="sm" c="dimmed" mt="md">
-              Здесь будет текст страницы.
-            </Text>
+            {page.body !== null && (
+              <Editor
+                pageId={selected.id}
+                body={page.body}
+                onChange={page.change}
+              />
+            )}
           </div>
         ) : (
           <Text size="sm" c="dimmed" p="md">

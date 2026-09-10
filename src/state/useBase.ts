@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { PageId, Tree } from '../types';
 import type { PageStore } from '../storage/pageStore';
 import { seedBase } from '../domain/seed';
+import { useAutosave } from './useAutosave';
 import {
   insertNode,
   makeNode,
@@ -13,11 +14,21 @@ import {
 
 /**
  * Состояние базы: дерево, выбранная страница и операции над ними.
- * Каждая операция сразу пишется в хранилище — отдельной кнопки «Сохранить» нет (FR-16).
+ * Кнопки «Сохранить» нет (FR-16).
+ *
+ * Все изменения дерева идут через одну отложенную запись: иначе набор заголовка
+ * успел бы отложить старое дерево и затереть им результат следующей структурной
+ * операции. Структурные операции дописывают запись немедленно.
  */
 export function useBase(store: PageStore) {
   const [tree, setTree] = useState<Tree | null>(null);
   const [selectedId, setSelectedId] = useState<PageId | null>(null);
+
+  const saveTree = useCallback(
+    (_key: string, value: Tree) => void store.saveTree(value),
+    [store],
+  );
+  const { schedule, flush } = useAutosave<Tree>(saveTree);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,59 +58,61 @@ export function useBase(store: PageStore) {
     };
   }, [store]);
 
-  const persist = useCallback(
-    async (next: Tree) => {
+  const apply = useCallback(
+    (next: Tree, { immediate }: { immediate: boolean }) => {
       setTree(next);
-      await store.saveTree(next);
+      schedule('tree', next);
+      if (immediate) flush();
     },
-    [store],
+    [schedule, flush],
   );
 
   const createPage = useCallback(
-    async (parentId: PageId | null) => {
+    (parentId: PageId | null) => {
       if (!tree) return;
       const node = makeNode('Новая страница');
-      await persist(insertNode(tree, parentId, node));
+      apply(insertNode(tree, parentId, node), { immediate: true });
       setSelectedId(node.id);
     },
-    [tree, persist],
+    [tree, apply],
   );
 
+  /** Набор заголовка — запись откладывается, состояние меняется сразу. */
   const renamePage = useCallback(
-    async (id: PageId, title: string) => {
+    (id: PageId, title: string) => {
       if (!tree) return;
-      await persist(renameNode(tree, id, title));
+      apply(renameNode(tree, id, title), { immediate: false });
     },
-    [tree, persist],
+    [tree, apply],
   );
 
   const deletePage = useCallback(
-    async (id: PageId) => {
+    (id: PageId) => {
       if (!tree) return;
       const { tree: next, removed } = removeNode(tree, id);
-      await persist(next);
-      await store.deleteBodies(removed);
+      apply(next, { immediate: true });
+      void store.deleteBodies(removed);
       if (selectedId && removed.includes(selectedId)) {
         setSelectedId(next.roots[0]?.id ?? null);
       }
     },
-    [tree, persist, store, selectedId],
+    [tree, apply, store, selectedId],
   );
 
   const movePage = useCallback(
-    async (id: PageId, newParentId: PageId | null) => {
+    (id: PageId, newParentId: PageId | null) => {
       if (!tree) return;
-      await persist(moveNode(tree, id, newParentId));
+      apply(moveNode(tree, id, newParentId), { immediate: true });
     },
-    [tree, persist],
+    [tree, apply],
   );
 
   const shiftPage = useCallback(
-    async (id: PageId, delta: -1 | 1) => {
+    (id: PageId, delta: -1 | 1) => {
       if (!tree) return;
-      await persist(shiftNode(tree, id, delta));
+      apply(shiftNode(tree, id, delta), { immediate: true });
     },
-    [tree, persist],
+    [tree, apply],
   );
 
   return {
