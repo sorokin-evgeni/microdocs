@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   AppShell,
@@ -12,6 +12,9 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconPlus } from '@tabler/icons-react';
 
 import { createIndexedDbStore } from './storage/indexedDbStore';
+import { createRemoteStore } from './storage/remoteStore';
+import { createOutbox } from './storage/outbox';
+import { createSyncingStore, type SyncState } from './storage/syncingStore';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
 import { PageTree } from './components/PageTree';
@@ -24,7 +27,26 @@ import type { PageId } from './types';
 const BASE_ID = 'default';
 
 export function App() {
-  const store = useMemo(() => createIndexedDbStore(BASE_ID), []);
+  const [syncState, setSyncState] = useState<SyncState>('синхронизировано');
+
+  const store = useMemo(
+    () =>
+      createSyncingStore(
+        createIndexedDbStore(BASE_ID),
+        createRemoteStore(BASE_ID),
+        createOutbox(BASE_ID),
+        setSyncState,
+      ),
+    [],
+  );
+
+  // Связь вернулась — досылаем накопившееся (FR-32).
+  useEffect(() => {
+    const drain = () => void store.drain();
+    window.addEventListener('online', drain);
+    return () => window.removeEventListener('online', drain);
+  }, [store]);
+
   const base = useBase(store);
   const page = usePageBody(store, base.selectedId);
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
@@ -72,6 +94,19 @@ export function App() {
           />
           <Text size="sm" fw={600}>
             microdocs
+          </Text>
+          <Text
+            size="xs"
+            ml="auto"
+            c={
+              syncState === 'нет связи'
+                ? 'red'
+                : syncState === 'ожидает отправки'
+                  ? 'yellow'
+                  : 'dimmed'
+            }
+          >
+            {syncState}
           </Text>
         </Group>
       </AppShell.Header>
