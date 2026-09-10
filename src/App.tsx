@@ -1,8 +1,52 @@
-import { AppShell, Burger, Group, Text } from '@mantine/core';
+import { useMemo, useState } from 'react';
+import {
+  ActionIcon,
+  AppShell,
+  Burger,
+  Group,
+  ScrollArea,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { IconPlus } from '@tabler/icons-react';
+
+import { createIndexedDbStore } from './storage/indexedDbStore';
+import { useBase } from './state/useBase';
+import { PageTree } from './components/PageTree';
+import { MovePageModal } from './components/MovePageModal';
+import { findNode } from './domain/tree';
+import type { PageId } from './types';
+
+/** Пока пользователь один, база одна. Идентификатор нужен для изоляции (NFR-26). */
+const BASE_ID = 'default';
 
 export function App() {
-  const [navOpened, { toggle: toggleNav }] = useDisclosure(false);
+  const store = useMemo(() => createIndexedDbStore(BASE_ID), []);
+  const base = useBase(store);
+  const [navOpened, { toggle: toggleNav, close: closeNav }] =
+    useDisclosure(false);
+  const [movingId, setMovingId] = useState<PageId | null>(null);
+
+  const selected =
+    base.tree && base.selectedId ? findNode(base.tree, base.selectedId) : null;
+
+  const handleSelect = (id: PageId) => {
+    base.select(id);
+    closeNav();
+  };
+
+  const handleDelete = (id: PageId) => {
+    if (!base.tree) return;
+    const node = findNode(base.tree, id);
+    if (!node) return;
+    const title = node.title || 'Без названия';
+    const question =
+      node.children.length > 0
+        ? `Удалить «${title}» вместе с вложенными страницами?`
+        : `Удалить «${title}»?`;
+    if (window.confirm(question)) void base.deletePage(id);
+  };
 
   return (
     <AppShell
@@ -29,17 +73,73 @@ export function App() {
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="xs">
-        <Text size="xs" c="dimmed">
-          Дерево страниц
-        </Text>
+      <AppShell.Navbar p={6}>
+        <Group justify="space-between" px={4} pb={4} wrap="nowrap">
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
+            Страницы
+          </Text>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size={20}
+            onClick={() => void base.createPage(null)}
+            aria-label="Новая страница"
+          >
+            <IconPlus size={14} />
+          </ActionIcon>
+        </Group>
+
+        <ScrollArea style={{ flex: 1 }} type="hover">
+          {base.tree && (
+            <PageTree
+              tree={base.tree}
+              selectedId={base.selectedId}
+              onSelect={handleSelect}
+              onCreateChild={(parentId) => void base.createPage(parentId)}
+              onDelete={handleDelete}
+              onMoveRequest={setMovingId}
+              onShift={(id, delta) => void base.shiftPage(id, delta)}
+            />
+          )}
+        </ScrollArea>
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Text size="sm" p="md">
-          Редактор
-        </Text>
+        {selected ? (
+          <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 20px' }}>
+            <TextInput
+              value={selected.title}
+              onChange={(event) =>
+                void base.renamePage(selected.id, event.currentTarget.value)
+              }
+              placeholder="Без названия"
+              variant="unstyled"
+              size="xl"
+              styles={{ input: { fontWeight: 700, fontSize: 28 } }}
+              aria-label="Заголовок страницы"
+            />
+            <Text size="sm" c="dimmed" mt="md">
+              Здесь будет текст страницы.
+            </Text>
+          </div>
+        ) : (
+          <Text size="sm" c="dimmed" p="md">
+            Выбери страницу слева или создай новую.
+          </Text>
+        )}
       </AppShell.Main>
+
+      {base.tree && (
+        <MovePageModal
+          tree={base.tree}
+          pageId={movingId}
+          onClose={() => setMovingId(null)}
+          onMove={(newParentId) => {
+            if (movingId) void base.movePage(movingId, newParentId);
+            setMovingId(null);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
