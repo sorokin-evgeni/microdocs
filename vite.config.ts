@@ -7,10 +7,25 @@ function apiPlugin(): PluginOption {
   return {
     name: 'microdocs-api',
     configureServer(server) {
+      // Тесты поднимают свой Vite-сервер, API им не нужен.
+      if (process.env.VITEST) return;
+
+      // Хранилище создаётся при первом запросе и переиспользуется дальше:
+      // раньше времени трогать S3 незачем.
+      let ready: Promise<(req: never, res: never) => Promise<boolean>> | null =
+        null;
+
       server.middlewares.use(async (req, res, next) => {
-        const { handleApi } = await server.ssrLoadModule('/server/api.ts');
-        const handled = await handleApi(req, res);
-        if (!handled) next();
+        ready ??= (async () => {
+          const { createApi } = await server.ssrLoadModule('/server/api.ts');
+          const { createStorage } = await server.ssrLoadModule(
+            '/server/storage/index.ts',
+          );
+          return createApi(createStorage());
+        })();
+
+        const handleApi = await ready;
+        if (!(await handleApi(req as never, res as never))) next();
       });
     },
   };
