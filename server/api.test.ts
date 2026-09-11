@@ -58,8 +58,9 @@ async function call(
   method: string,
   url: string,
   body = '',
+  owner: string | null = 'владелец',
 ) {
-  const handle = createApi(storage);
+  const handle = createApi(storage, () => owner);
   const { res, captured } = makeResponse();
   const handled = await handle(makeRequest(method, url, body), res);
   return { handled, ...captured };
@@ -69,14 +70,25 @@ const дерево: Tree = { roots: [{ id: 'p1', title: 'Первая', children
 
 describe('HTTP API', () => {
   it('чужие маршруты не трогает', async () => {
-    const result = await call(memoryStorage(), 'GET', '/assets/main.js');
-    expect(result.handled).toBe(false);
+    expect((await call(memoryStorage(), 'GET', '/assets/main.js')).handled).toBe(
+      false,
+    );
+  });
+
+  it('без опознанного владельца — 401', async () => {
+    const result = await call(
+      memoryStorage(),
+      'GET',
+      '/api/tree',
+      '',
+      null,
+    );
+    expect(result.status).toBe(401);
   });
 
   describe('дерево', () => {
     it('пока не создано — 404', async () => {
-      const result = await call(memoryStorage(), 'GET', '/api/default/tree');
-      expect(result.status).toBe(404);
+      expect((await call(memoryStorage(), 'GET', '/api/tree')).status).toBe(404);
     });
 
     it('записывается и читается обратно', async () => {
@@ -84,34 +96,25 @@ describe('HTTP API', () => {
       const put = await call(
         storage,
         'PUT',
-        '/api/default/tree',
+        '/api/tree',
         JSON.stringify(дерево),
       );
       expect(put.status).toBe(200);
 
-      const get = await call(storage, 'GET', '/api/default/tree');
-      expect(get.status).toBe(200);
+      const get = await call(storage, 'GET', '/api/tree');
       expect(JSON.parse(get.body)).toEqual(дерево);
     });
 
     it('неразбираемое тело — 400', async () => {
-      const result = await call(
-        memoryStorage(),
-        'PUT',
-        '/api/default/tree',
-        'не json',
-      );
-      expect(result.status).toBe(400);
+      expect(
+        (await call(memoryStorage(), 'PUT', '/api/tree', 'не json')).status,
+      ).toBe(400);
     });
 
     it('тело без roots — 400', async () => {
-      const result = await call(
-        memoryStorage(),
-        'PUT',
-        '/api/default/tree',
-        '{"что-то":1}',
-      );
-      expect(result.status).toBe(400);
+      expect(
+        (await call(memoryStorage(), 'PUT', '/api/tree', '{"что-то":1}')).status,
+      ).toBe(400);
     });
   });
 
@@ -119,60 +122,61 @@ describe('HTTP API', () => {
     it('записывается, читается и удаляется', async () => {
       const storage = memoryStorage();
 
-      expect((await call(storage, 'GET', '/api/default/pages/p1')).status).toBe(
-        404,
-      );
+      expect((await call(storage, 'GET', '/api/pages/p1')).status).toBe(404);
 
-      const put = await call(
-        storage,
-        'PUT',
-        '/api/default/pages/p1',
-        '## Текст',
-      );
-      expect(put.status).toBe(200);
+      expect(
+        (await call(storage, 'PUT', '/api/pages/p1', '## Текст')).status,
+      ).toBe(200);
 
-      const get = await call(storage, 'GET', '/api/default/pages/p1');
+      const get = await call(storage, 'GET', '/api/pages/p1');
       expect(get.body).toBe('## Текст');
       expect(get.contentType).toContain('text/markdown');
 
+      expect((await call(storage, 'DELETE', '/api/pages/p1')).status).toBe(200);
+      expect((await call(storage, 'GET', '/api/pages/p1')).status).toBe(404);
+    });
+  });
+
+  describe('изоляция владельцев (FR-39)', () => {
+    it('каждый видит только свою базу', async () => {
+      const storage = memoryStorage();
+      await call(storage, 'PUT', '/api/pages/p1', 'от первого', 'первый');
+      await call(storage, 'PUT', '/api/pages/p1', 'от второго', 'второй');
+
       expect(
-        (await call(storage, 'DELETE', '/api/default/pages/p1')).status,
-      ).toBe(200);
-      expect((await call(storage, 'GET', '/api/default/pages/p1')).status).toBe(
-        404,
-      );
+        (await call(storage, 'GET', '/api/pages/p1', '', 'первый')).body,
+      ).toBe('от первого');
+      expect(
+        (await call(storage, 'GET', '/api/pages/p1', '', 'второй')).body,
+      ).toBe('от второго');
     });
 
-    it('базы изолированы друг от друга (NFR-26)', async () => {
+    it('чужую базу нельзя запросить через адрес', async () => {
       const storage = memoryStorage();
-      await call(storage, 'PUT', '/api/base-a/pages/p1', 'из первой');
-      await call(storage, 'PUT', '/api/base-b/pages/p1', 'из второй');
+      await call(storage, 'PUT', '/api/pages/p1', 'моё', 'первый');
 
-      expect((await call(storage, 'GET', '/api/base-a/pages/p1')).body).toBe(
-        'из первой',
-      );
-      expect((await call(storage, 'GET', '/api/base-b/pages/p1')).body).toBe(
-        'из второй',
-      );
+      // Попытка адресовать другую базу: лишний сегмент — просто нет маршрута.
+      expect(
+        (await call(storage, 'GET', '/api/первый/pages/p1', '', 'второй'))
+          .status,
+      ).toBe(404);
     });
   });
 
   describe('проверка входа', () => {
     it('обход пути отвергается', async () => {
       const storage = memoryStorage();
-      const result = await call(storage, 'GET', '/api/default/pages/..%2Fsecret');
+      const result = await call(storage, 'GET', '/api/pages/..%2Fsecret');
       expect(result.status).toBe(400);
       expect(storage.dump()).toEqual({ trees: [], pages: [] });
     });
 
     it('неизвестный маршрут — 404', async () => {
-      expect((await call(memoryStorage(), 'GET', '/api/default/нет')).status).toBe(
-        404,
-      );
+      expect((await call(memoryStorage(), 'GET', '/api/нет')).status).toBe(404);
     });
 
     it('неподдерживаемый метод — 405', async () => {
-      expect((await call(memoryStorage(), 'PATCH', '/api/default/tree')).status).toBe(
+      expect((await call(memoryStorage(), 'PATCH', '/api/tree')).status).toBe(
         405,
       );
     });
@@ -184,8 +188,7 @@ describe('HTTP API', () => {
           throw new Error('хранилище недоступно');
         },
       };
-      const result = await call(broken, 'GET', '/api/default/tree');
-      expect(result.status).toBe(502);
+      expect((await call(broken, 'GET', '/api/tree')).status).toBe(502);
     });
   });
 });

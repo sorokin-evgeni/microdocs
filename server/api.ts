@@ -1,17 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Tree } from '../shared/types';
 import type { BaseStorage } from './storage/port';
+import { resolveBaseId } from './identity';
 
 /**
- * HTTP-контракт. Ничего не знает о том, где лежат данные — работает через
- * порт `BaseStorage`, так что замена S3 на Postgres клиента не касается.
+ * HTTP-контракт. Не знает ни где лежат данные, ни кому они принадлежат:
+ * хранилище приходит через порт, владелец — через resolveBaseId.
  *
- *   GET|PUT        /api/:baseId/tree
- *   GET|PUT|DELETE /api/:baseId/pages/:id
+ *   GET|PUT        /api/tree
+ *   GET|PUT|DELETE /api/pages/:id
+ *
+ * База в адресе не упоминается намеренно: её определяет сертификат клиента,
+ * иначе можно было бы попросить чужую.
  *
  * Возвращает true, если запрос его; false — пусть обрабатывает кто-то другой.
  */
-export function createApi(storage: BaseStorage) {
+export function createApi(
+  storage: BaseStorage,
+  identify: (req: IncomingMessage) => string | null = resolveBaseId,
+) {
   return async function handleApi(
     req: IncomingMessage,
     res: ServerResponse,
@@ -20,20 +27,20 @@ export function createApi(storage: BaseStorage) {
     const parts = url.pathname.split('/').filter(Boolean);
     if (parts[0] !== 'api') return false;
 
-    const baseId = parts[1];
-    if (!baseId || !isSafeSegment(baseId)) {
-      send(res, 400, { error: 'Недопустимый идентификатор базы' });
+    const baseId = identify(req);
+    if (!baseId) {
+      send(res, 401, { error: 'Не удалось определить владельца' });
       return true;
     }
 
     try {
-      if (parts[2] === 'tree' && parts.length === 3) {
+      if (parts[1] === 'tree' && parts.length === 2) {
         await handleTree(req, res, storage, baseId);
         return true;
       }
 
-      if (parts[2] === 'pages' && parts.length === 4) {
-        const id = parts[3];
+      if (parts[1] === 'pages' && parts.length === 3) {
+        const id = parts[2];
         if (!id || !isSafeSegment(id)) {
           send(res, 400, { error: 'Недопустимый идентификатор страницы' });
           return true;

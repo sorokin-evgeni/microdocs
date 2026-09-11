@@ -1,9 +1,14 @@
 import type { PageId, Tree } from '../types';
 import type { PageStore } from './pageStore';
 
-/** Хранилище на сервере. Ключ к S3 остаётся там, в браузер не попадает (NFR-17). */
-export function createRemoteStore(baseId: string): PageStore {
-  const base = `/api/${encodeURIComponent(baseId)}`;
+/**
+ * Хранилище на сервере. Ключ к S3 остаётся там, в браузер не попадает (NFR-17).
+ *
+ * База в адресах не указывается: сервер определяет её по клиентскому
+ * сертификату, поэтому попросить чужую невозможно.
+ */
+export function createRemoteStore(): PageStore {
+  const base = '/api';
 
   return {
     async loadTree() {

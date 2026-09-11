@@ -23,8 +23,11 @@ import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
 
-/** Пока пользователь один, база одна. Идентификатор нужен для изоляции (NFR-26). */
-const BASE_ID = 'default';
+/**
+ * Имя локального кеша в этом браузере. На сервере база определяется
+ * клиентским сертификатом и в запросах не называется.
+ */
+const LOCAL_CACHE_ID = 'default';
 
 export function App() {
   const [syncState, setSyncState] = useState<SyncState>('синхронизировано');
@@ -32,9 +35,9 @@ export function App() {
   const store = useMemo(
     () =>
       createSyncingStore(
-        createIndexedDbStore(BASE_ID),
-        createRemoteStore(BASE_ID),
-        createOutbox(BASE_ID),
+        createIndexedDbStore(LOCAL_CACHE_ID),
+        createRemoteStore(),
+        createOutbox(LOCAL_CACHE_ID),
         setSyncState,
       ),
     [],
