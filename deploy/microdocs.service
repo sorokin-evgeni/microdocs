@@ -1,0 +1,33 @@
+[Unit]
+Description=microdocs — своя вики
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=microdocs
+WorkingDirectory=/opt/microdocs
+ExecStart=/usr/bin/node /opt/microdocs/dist-server/main.js
+Restart=always
+RestartSec=3
+
+# Порт 443 без прав root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+EnvironmentFile=/etc/microdocs/env
+
+# Продление сертификата: systemctl reload microdocs
+ExecReload=/bin/kill -HUP $MAINPID
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/microdocs
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

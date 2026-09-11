@@ -1,0 +1,48 @@
+#cloud-config
+# Первоначальная настройка виртуальной машины под microdocs.
+# Подставляется в ВМ как os-metadata-attributes.user-data.
+
+users:
+  - name: microdocs
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - SSH_PUBLIC_KEY_PLACEHOLDER
+
+package_update: true
+package_upgrade: false
+packages:
+  - curl
+  - ca-certificates
+  - certbot
+  - ufw
+
+write_files:
+  - path: /etc/microdocs/env
+    permissions: '0640'
+    content: |
+      PORT=443
+      MICRODOCS_STATIC=/opt/microdocs/dist
+      MICRODOCS_BACKEND=s3
+      MICRODOCS_S3_BUCKET=microdocs-data
+      MICRODOCS_S3_ENDPOINT=https://storage.mwsapis.ru
+      MICRODOCS_S3_REGION=ru-central1
+      MICRODOCS_AWS_CREDENTIALS=/etc/microdocs/s3-credentials
+      MICRODOCS_AWS_PROFILE=microdocs
+      MICRODOCS_TLS_KEY=/etc/letsencrypt/live/notes.e40in.ru/privkey.pem
+      MICRODOCS_TLS_CERT=/etc/letsencrypt/live/notes.e40in.ru/fullchain.pem
+      MICRODOCS_CLIENT_CA=/etc/microdocs/client-ca.pem
+
+runcmd:
+  # Node 22 из репозитория NodeSource: в Ubuntu 24.04 версия слишком старая.
+  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  - apt-get install -y nodejs
+  - mkdir -p /opt/microdocs /etc/microdocs
+  - chown -R microdocs:microdocs /opt/microdocs
+  - chmod 750 /etc/microdocs
+  # 80 нужен только для проверки Let's Encrypt, 443 — само приложение.
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
