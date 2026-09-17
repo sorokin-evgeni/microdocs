@@ -29,8 +29,11 @@ openssl req -newkey rsa:2048 -nodes -keyout client.key -out client.csr \
   -subj "/CN=$CN"
 openssl x509 -req -in client.csr -CA ca.pem -CAkey ca.key -CAcreateserial \
   -out client.pem -days 825
-openssl pkcs12 -export -out client.p12 -inkey client.key -in client.pem \
-  -certfile ca.pem -passout pass:microdocs
+# -legacy и старые алгоритмы обязательны: PKCS#12 по умолчанию OpenSSL 3
+# не импортируется в связку ключей macOS («MAC verification failed»).
+openssl pkcs12 -export -legacy -out client.p12 -inkey client.key -in client.pem \
+  -certfile ca.pem -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+  -passout pass:microdocs
 
 rm -f server.csr client.csr
 echo
