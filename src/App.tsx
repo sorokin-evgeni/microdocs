@@ -147,7 +147,7 @@ export function App() {
 
       <AppShell.Main>
         {selected ? (
-          <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 20px' }}>
+          <div className="page-column">
             <TextInput
               value={selected.title}
               onChange={(event) =>
@@ -155,8 +155,7 @@ export function App() {
               }
               placeholder="Без названия"
               variant="unstyled"
-              size="xl"
-              styles={{ input: { fontWeight: 700, fontSize: 28 } }}
+              classNames={{ input: 'page-title' }}
               aria-label="Заголовок страницы"
             />
             {page.body !== null && (

@@ -1,9 +1,7 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { Typography } from '@mantine/core';
 import type { PageId } from '../types';
-import './editor.css';
 
 interface Props {
   /** Смена страницы пересоздаёт редактор, чтобы не смешивать содержимое. */
@@ -35,9 +33,9 @@ export function Editor({ pageId, body, onChange }: Props) {
   );
 
   return (
-    <Typography className="md-editor">
+    <div className="md-editor">
       <EditorContent editor={editor} />
-    </Typography>
+    </div>
   );
 }
 

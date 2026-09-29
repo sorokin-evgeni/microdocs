@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Типографика заметок</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Inter:ital,opsz,wght@0,14..32,400..700;1,14..32,400..700&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&display=swap">
+<style>
+/* ============================================================
+   Стенд: оболочка приложения (не меняется между вариантами)
+   ============================================================ */
+:root {
+  --sys: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sys-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --lab-bg: #f1f2f4;
+  --lab-fg: #1d1f23;
+  --lab-muted: #6a7079;
+  --lab-border: #dcdfe4;
+  --lab-chip: #ffffff;
+  --lab-active: #1d1f23;
+  --lab-active-fg: #ffffff;
+
+  --app-bg: #ffffff;
+  --app-fg: #000000;
+  --app-dim: #868e96;
+  --app-border: #dee2e6;
+  --app-hover: #f8f9fa;
+}
+:root[data-theme="dark"] {
+  --lab-bg: #161718;
+  --lab-fg: #e6e7e9;
+  --lab-muted: #8d929a;
+  --lab-border: #2f3134;
+  --lab-chip: #202123;
+  --lab-active: #e6e7e9;
+  --lab-active-fg: #161718;
+
+  --app-bg: #242424;
+  --app-fg: #c9c9c9;
+  --app-dim: #828282;
+  --app-border: #424242;
+  --app-hover: #3b3b3b;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--lab-bg);
+  color: var(--lab-fg);
+  font: 13px/1.45 var(--sys);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- панель стенда ---------- */
+.lab {
+  flex: none;
+  padding: 10px 16px 10px;
+  border-bottom: 1px solid var(--lab-border);
+  display: grid;
+  gap: 8px;
+}
+.lab-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lab-title { font-weight: 650; font-size: 13px; margin-right: 4px; white-space: nowrap; }
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--lab-border);
+  border-radius: 8px;
+  background: var(--lab-chip);
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+.seg button {
+  all: unset;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  color: var(--lab-muted);
+  font-weight: 500;
+}
+.seg button:hover { color: var(--lab-fg); }
+.seg button[aria-pressed="true"] { background: var(--lab-active); color: var(--lab-active-fg); }
+.seg button:focus-visible { outline: 2px solid #4c6ef5; outline-offset: 1px; }
+.seg kbd { font: 10px var(--sys-mono); opacity: .55; margin-right: 5px; }
+.lab-spacer { flex: 1; }
+.lab-info { color: var(--lab-muted); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; min-height: 19px; }
+.lab-info b { color: var(--lab-fg); font-weight: 600; }
+.lab-info .spec { white-space: nowrap; }
+.lab-info .spec i { font-style: normal; color: var(--lab-fg); }
+.lab-info .ok { color: #2f9e44; }
+.lab-info .bad { color: #e8590c; }
+
+/* ---------- макет приложения ---------- */
+.stage { flex: 1; min-height: 0; display: flex; justify-content: center; }
+.app {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 40px 1fr;
+  background: var(--app-bg);
+  color: var(--app-fg);
+}
+.app-header {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--app-border);
+  font-size: 13px;
+}
+.app-header .brand { font-weight: 600; }
+.app-header .sync { margin-left: auto; font-size: 11px; color: var(--app-dim); }
+.burger { display: none; width: 18px; height: 12px; border-block: 2px solid currentColor; position: relative; opacity: .8; }
+.burger::after { content: ""; position: absolute; left: 0; right: 0; top: 3px; border-top: 2px solid currentColor; }
+
+.sidebar { border-right: 1px solid var(--app-border); padding: 6px; overflow: auto; font-size: 13px; }
+.sidebar .label { display: flex; justify-content: space-between; padding: 0 4px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--app-dim); }
+.tree { list-style: none; margin: 0; padding: 0; }
+.tree li > span { display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 4px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree li > span::before { content: ""; width: 12px; flex: none; text-align: center; color: var(--app-dim); font-size: 9px; }
+.tree li.open > span::before { content: "▾"; }
+.tree li.closed > span::before { content: "▸"; }
+.tree ul { list-style: none; margin: 0; padding-left: 14px; }
+.tree .sel { background: var(--app-hover); }
+
+.main { overflow-y: auto; container-type: inline-size; container-name: main; min-width: 0; }
+
+/* режим «телефон» */
+:root[data-device="phone"] .stage { padding: 16px 0; }
+:root[data-device="phone"] .app {
+  flex: 0 0 390px;
+  grid-template-columns: 1fr;
+  border: 1px solid var(--lab-border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0,0,0,.12);
+}
+:root[data-device="phone"] .sidebar { display: none; }
+:root[data-device="phone"] .burger { display: block; }
+@media (max-width: 720px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .burger { display: block; }
+  .lab-title { display: none; }
+}
+
+/* ============================================================
+   Документ: общая механика, значения — из токенов варианта
+   ============================================================ */
+.column {
+  max-width: calc(var(--measure) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: var(--pad-top) var(--gutter) 120px;
+  background: var(--doc-bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--size);
+  line-height: var(--lh);
+}
+.main { background: var(--doc-bg); }
+@container main (max-width: 560px) {
+  .column { --gutter: 16px; --pad-top: 20px; }
+}
+
+.page-title {
+  font-family: var(--title-font, var(--font));
+  font-size: var(--title-size);
+  font-weight: var(--title-weight);
+  line-height: var(--title-lh);
+  letter-spacing: var(--title-ls, 0);
+  color: var(--strong);
+  margin: 0 0 var(--title-mb);
+  text-wrap: balance;
+}
+
+.doc > :first-child { margin-top: 0; }
+.doc :is(h1, h2, h3) {
+  font-family: var(--head-font, var(--font));
+  color: var(--strong);
+  text-wrap: balance;
+  break-after: avoid;
+}
+.doc h1 { font-size: var(--h1); font-weight: var(--h1w); line-height: var(--h1lh); letter-spacing: var(--h1ls, 0); margin: var(--h1mt) 0 var(--h1mb); }
+.doc h2 { font-size: var(--h2); font-weight: var(--h2w); line-height: var(--h2lh); letter-spacing: var(--h2ls, 0); margin: var(--h2mt) 0 var(--h2mb); }
+.doc h3 { font-size: var(--h3); font-weight: var(--h3w); line-height: var(--h3lh); letter-spacing: var(--h3ls, 0); margin: var(--h3mt) 0 var(--h3mb); }
+.doc :is(h1, h2, h3) + :is(h2, h3) { margin-top: var(--hh-gap); }
+
+.doc p { margin: 0 0 var(--p-gap); text-wrap: pretty; }
+.doc strong { font-weight: var(--bold); color: var(--strong); }
+.doc a {
+  color: var(--link, var(--fg));
+  text-decoration: underline;
+  text-decoration-color: var(--link-line, var(--border-strong));
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color .15s;
+}
+.doc a:hover { text-decoration-color: currentColor; }
+
+.doc :is(ul, ol) { margin: 0 0 var(--p-gap); padding-left: var(--indent); }
+.doc li + li { margin-top: var(--li-gap); }
+.doc li > :is(ul, ol) { margin: var(--li-gap) 0 0; }
+.doc li::marker { color: var(--marker, var(--muted)); }
+.doc ol > li::marker { font-variant-numeric: tabular-nums; }
+
+.doc blockquote { margin: 0 0 var(--p-gap); padding-left: 1em; border-left: 3px solid var(--border-strong); }
+.doc blockquote p:last-child { margin-bottom: 0; }
+
+.doc :not(pre) > code { white-space: nowrap; }
+.doc code { font-family: var(--mono); font-size: var(--code-size, .875em); background: var(--code-bg); padding: .12em .35em; border-radius: 4px; }
+.doc pre {
+  margin: 0 0 var(--p-gap);
+  padding: 14px 16px;
+  background: var(--code-bg);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: var(--pre-size, .875em);
+  line-height: 1.6;
+}
+.doc pre code { background: none; padding: 0; font-size: inherit; border: 0; border-radius: 0; }
+
+.doc hr { border: 0; border-top: 1px solid var(--border); margin: calc(var(--p-gap) * 2.4) 0; }
+
+.table-wrap { margin: 0 0 var(--p-gap); overflow-x: auto; }
+.doc table { border-collapse: collapse; width: 100%; font-size: var(--table-size, .9375em); line-height: 1.45; font-variant-numeric: tabular-nums; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: 8px 14px 8px 0; }
+.doc :is(th, td).num { text-align: right; padding-right: 0; white-space: nowrap; }
+.doc th { font-weight: 600; }
+
+/* чек-лист: разметка как у Tiptap TaskList */
+.doc ul.tasks { list-style: none; padding-left: 0; }
+.doc ul.tasks li { display: flex; gap: .6em; align-items: flex-start; }
+.doc ul.tasks label { flex: none; display: flex; align-items: center; height: 1lh; }
+.doc ul.tasks input {
+  appearance: none; margin: 0;
+  width: 16px; height: 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  display: grid; place-content: center;
+  cursor: pointer;
+  background: var(--doc-bg);
+}
+.doc ul.tasks input::after {
+  content: ""; width: 9px; height: 5px;
+  border: solid var(--doc-bg); border-width: 0 0 2px 2px;
+  transform: rotate(-45deg) translate(1px, -1px);
+  opacity: 0;
+}
+.doc ul.tasks input:checked { background: var(--check, var(--accent)); border-color: var(--check, var(--accent)); }
+.doc ul.tasks input:checked::after { opacity: 1; }
+.doc ul.tasks li:has(input:checked) > span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+
+::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* ============================================================
+   СЕЙЧАС — как рисует Mantine Typography + editor.css
+   ============================================================ */
+[data-v="now"] {
+  --font: var(--sys); --mono: var(--sys-mono);
+  --size: 14px; --lh: 1.55; --measure: 720px; --gutter: 20px; --pad-top: 24px;
+  --doc-bg: #fff; --fg: #000; --strong: #000; --muted: #868e96; --faint: #adb5bd;
+  --border: #dee2e6; --border-strong: #dee2e6; --code-bg: #f8f9fa; --accent: #4c6ef5;
+  --title-size: 28px; --title-weight: 700; --title-lh: 1.55; --title-mb: 4px;
+  --h1: 34px; --h1w: 700; --h1lh: 1.3;  --h1mt: 1.4em; --h1mb: .4em;
+  --h2: 26px; --h2w: 700; --h2lh: 1.35; --h2mt: 1.4em; --h2mb: .4em;
+  --h3: 22px; --h3w: 700; --h3lh: 1.4;  --h3mt: 1.4em; --h3mb: .4em;
+  --hh-gap: 1.4em;
+  --p-gap: .7em; --li-gap: 0; --indent: 1.4em; --bold: 700;
+  --code-size: 11px; --pre-size: 11px; --link: #4c6ef5;
+}
+:root[data-theme="dark"] [data-v="now"] {
+  --doc-bg: #242424; --fg: #c9c9c9; --strong: #c9c9c9; --muted: #828282;
+  --border: #424242; --border-strong: #424242; --code-bg: #1f1f1f; --link: #748ffc;
+}
+[data-v="now"] .doc a { text-decoration: none; }
+[data-v="now"] :is(.page-title, .doc p, .doc h1, .doc h2, .doc h3) { text-wrap: wrap; }
+[data-v="now"] .doc code { padding: 1px 5px; }
+[data-v="now"] .doc :not(pre) > code { background: #f8f9fa; }
+:root[data-theme="dark"] [data-v="now"] .doc :not(pre) > code { background: #3b3b3b; color: #fff; }
+[data-v="now"] .doc pre { padding: 10px 12px; border-radius: 4px; line-height: 1.55; }
+[data-v="now"] .doc blockquote { color: var(--muted); padding-left: .9em; }
+[data-v="now"] .doc li::marker { color: inherit; }
+[data-v="now"] .doc hr { margin: 14px 0; }
+/* таблиц в редакторе нет — браузерный дефолт */
+[data-v="now"] .doc table { width: auto; font-size: inherit; line-height: inherit; border-collapse: separate; }
+[data-v="now"] .doc :is(th, td) { padding: 1px; }
+[data-v="now"] .doc th { font-weight: 700; text-align: center; }
+/* чек-листов в редакторе нет — остаётся текст «[ ]» */
+[data-v="now"] .doc ul.tasks { list-style: disc; padding-left: 1.4em; }
+[data-v="now"] .doc ul.tasks li { display: list-item; }
+[data-v="now"] .doc ul.tasks label { display: none; }
+[data-v="now"] .doc ul.tasks li > span::before { content: "[ ] "; }
+[data-v="now"] .doc ul.tasks li:has(input:checked) > span { color: inherit; text-decoration: none; }
+[data-v="now"] .doc ul.tasks li:has(input:checked) > span::before { content: "[x] "; }
+
+/* ============================================================
+   A · ТИХИЙ — системный шрифт, мягкая шкала (Notion, Apple Notes)
+   ============================================================ */
+[data-v="a"] {
+  --font: var(--sys); --mono: var(--sys-mono);
+  --size: 16px; --lh: 1.6; --measure: 610px; --gutter: 24px; --pad-top: 48px;
+  --doc-bg: #ffffff; --fg: #262626; --strong: #111111; --muted: #6f6f6f; --faint: #a8a8a8;
+  --border: #ebebeb; --border-strong: #d4d4d4; --code-bg: #f4f4f3; --accent: #4c6ef5;
+  --title-size: 32px; --title-weight: 700; --title-lh: 1.2; --title-ls: -.02em; --title-mb: 24px;
+  --h1: 24px; --h1w: 650; --h1lh: 1.3;  --h1ls: -.012em; --h1mt: 40px; --h1mb: 10px;
+  --h2: 20px; --h2w: 600; --h2lh: 1.35; --h2ls: -.008em; --h2mt: 32px; --h2mb: 8px;
+  --h3: 17px; --h3w: 600; --h3lh: 1.4;  --h3mt: 26px; --h3mb: 6px;
+  --hh-gap: 14px;
+  --p-gap: 14px; --li-gap: 4px; --indent: 1.5em; --bold: 600;
+  --link-line: color-mix(in srgb, var(--accent) 45%, transparent); --marker: var(--faint);
+}
+:root[data-theme="dark"] [data-v="a"] {
+  --doc-bg: #242424; --fg: #dcdcdc; --strong: #f3f3f3; --muted: #9b9b9b; --faint: #6c6c6c;
+  --border: #363636; --border-strong: #505050; --code-bg: #2f2f2f; --accent: #8ea2ff;
+}
+[data-v="a"] .doc blockquote { color: var(--muted); border-left-width: 3px; }
+[data-v="a"] .doc th { color: var(--muted); font-size: .9em; border-bottom: 1px solid var(--border-strong); padding-bottom: 6px; }
+[data-v="a"] .doc td { border-bottom: 1px solid var(--border); }
+[data-v="a"] .doc pre { border-radius: 8px; }
+
+/* ============================================================
+   B · ПЛОТНЫЙ — Inter, шкала 1.125, сетка в таблицах (Linear, GitHub)
+   ============================================================ */
+[data-v="b"] {
+  --font: "Inter", var(--sys); --mono: var(--sys-mono);
+  --size: 15px; --lh: 1.55; --measure: 640px; --gutter: 24px; --pad-top: 36px;
+  --doc-bg: #ffffff; --fg: #1f2328; --strong: #0d1117; --muted: #59636e; --faint: #9aa1a9;
+  --border: #e3e6ea; --border-strong: #cfd4da; --code-bg: #f5f6f8; --accent: #4c6ef5; --th-bg: #f7f8fa;
+  --title-size: 26px; --title-weight: 650; --title-lh: 1.25; --title-ls: -.022em; --title-mb: 18px;
+  --h1: 20px; --h1w: 620; --h1lh: 1.3;  --h1ls: -.014em; --h1mt: 32px; --h1mb: 8px;
+  --h2: 17px; --h2w: 600; --h2lh: 1.35; --h2ls: -.01em;  --h2mt: 26px; --h2mb: 6px;
+  --h3: 15px; --h3w: 600; --h3lh: 1.45; --h3ls: -.005em; --h3mt: 22px; --h3mb: 4px;
+  --hh-gap: 12px;
+  --p-gap: 11px; --li-gap: 3px; --indent: 1.4em; --bold: 600;
+  --code-size: .86em; --pre-size: 13px; --table-size: 14px;
+  --link: #3b5bdb; --link-line: color-mix(in srgb, #3b5bdb 35%, transparent);
+}
+:root[data-theme="dark"] [data-v="b"] {
+  --doc-bg: #242424; --fg: #d6d8dc; --strong: #f1f2f4; --muted: #979ca4; --faint: #686d74;
+  --border: #393b3f; --border-strong: #4a4d52; --code-bg: #2c2d30; --accent: #8ea2ff; --th-bg: #2a2b2e;
+  --link: #9db0ff; --link-line: color-mix(in srgb, #9db0ff 40%, transparent);
+}
+[data-v="b"] .column { font-feature-settings: "cv11", "ss03"; }
+[data-v="b"] .doc :not(pre) > code { border: 1px solid var(--border); padding: .05em .3em; }
+[data-v="b"] .doc pre { border: 1px solid var(--border); padding: 12px 14px; line-height: 1.55; }
+[data-v="b"] .doc blockquote { color: var(--muted); border-left: 2px solid var(--accent); padding-left: 12px; }
+[data-v="b"] .table-wrap { border: 1px solid var(--border); border-radius: 6px; }
+[data-v="b"] .doc th { background: var(--th-bg); color: var(--muted); font-weight: 550; font-size: 13px; }
+[data-v="b"] .doc :is(th, td) { padding: 6px 12px; border-bottom: 1px solid var(--border); }
+[data-v="b"] .doc :is(th, td) + :is(th, td) { border-left: 1px solid var(--border); }
+[data-v="b"] .doc tr:last-child td { border-bottom: 0; }
+[data-v="b"] .doc :is(th, td).num { padding-right: 12px; }
+[data-v="b"] .doc ul.tasks input { width: 15px; height: 15px; border-radius: 3.5px; }
+
+/* ============================================================
+   C · КНИЖНЫЙ — Literata, тире в списках, booktabs, переносы
+   ============================================================ */
+[data-v="c"] {
+  --font: "Literata", Georgia, serif; --mono: "IBM Plex Mono", var(--sys-mono);
+  --size: 17px; --lh: 1.62; --measure: 600px; --gutter: 24px; --pad-top: 56px;
+  --doc-bg: #fcfbf8; --fg: #2b2824; --strong: #16130f; --muted: #766f64; --faint: #aca493;
+  --border: #e8e3d9; --border-strong: #cdc4b3; --code-bg: #f3efe6; --accent: #8a4b24; --check: #3d3831;
+  --title-size: 32px; --title-weight: 600; --title-lh: 1.2; --title-ls: -.012em; --title-mb: 28px;
+  --h1: 23px; --h1w: 600; --h1lh: 1.3;  --h1ls: -.008em; --h1mt: 44px; --h1mb: 10px;
+  --h2: 19.5px; --h2w: 600; --h2lh: 1.35; --h2mt: 34px; --h2mb: 8px;
+  --h3: 17px; --h3w: 500; --h3lh: 1.45; --h3mt: 26px; --h3mb: 4px;
+  --hh-gap: 14px;
+  --p-gap: 14px; --li-gap: 4px; --indent: 1.3em; --bold: 650;
+  --code-size: .82em; --pre-size: 14px; --table-size: 15.5px;
+}
+:root[data-theme="dark"] [data-v="c"] {
+  --doc-bg: #1f1d1a; --fg: #ddd6ca; --strong: #f2ece2; --muted: #a09887; --faint: #6f685c;
+  --border: #37332c; --border-strong: #514b41; --code-bg: #2a2723; --accent: #e0a276; --check: #d8d0c2;
+}
+[data-v="c"] .column { hyphens: auto; font-optical-sizing: auto; }
+[data-v="c"] .doc h3 { font-style: italic; }
+[data-v="c"] .doc :is(h1, h2, h3), [data-v="c"] .page-title { hyphens: manual; }
+[data-v="c"] .doc ul:not(.tasks) { list-style-type: "–  "; }
+[data-v="c"] .doc ol > li::marker { font-variant-numeric: oldstyle-nums tabular-nums; }
+[data-v="c"] .doc blockquote { border-left: 1px solid var(--border-strong); padding-left: 1.3em; font-style: italic; }
+[data-v="c"] .doc blockquote p { hyphens: manual; }
+[data-v="c"] .doc a { text-decoration-color: var(--faint); }
+[data-v="c"] .doc a:hover { color: var(--accent); }
+[data-v="c"] .doc hr { border: 0; height: auto; text-align: center; margin: 36px 0; }
+[data-v="c"] .doc hr::after { content: "*   *   *"; white-space: pre; color: var(--faint); letter-spacing: .1em; }
+[data-v="c"] .doc table { font-variant-numeric: lining-nums tabular-nums; border-top: 1.5px solid var(--strong); border-bottom: 1.5px solid var(--strong); }
+[data-v="c"] .doc th { font-weight: 600; border-bottom: 1px solid var(--border-strong); padding-top: 7px; }
+[data-v="c"] .doc td { padding-block: 5px; }
+[data-v="c"] .doc tr:first-child td { padding-top: 8px; }
+[data-v="c"] .doc tr:last-child td { padding-bottom: 8px; }
+[data-v="c"] .doc pre { border-radius: 4px; line-height: 1.55; }
+[data-v="c"] .doc ul.tasks input { border-radius: 3px; border-color: var(--muted); }
+
+/* ============================================================
+   D · МАРКДАУН — IBM Plex, уровень заголовка решётками на полях (iA Writer, Bear)
+   ============================================================ */
+[data-v="d"] {
+  --font: "IBM Plex Sans", var(--sys); --mono: "IBM Plex Mono", var(--sys-mono);
+  --size: 16px; --lh: 1.6; --measure: 620px; --gutter: 24px; --pad-top: 48px;
+  --doc-bg: #ffffff; --fg: #242424; --strong: #0f0f0f; --muted: #6b6b6b; --faint: #b3b3b3;
+  --border: #e8e8e8; --border-strong: #d0d0d0; --code-bg: #f4f4f4; --accent: #4c6ef5; --zebra: #f7f7f8;
+  --title-size: 28px; --title-weight: 600; --title-lh: 1.25; --title-ls: -.01em; --title-mb: 24px;
+  --h1: 20px; --h1w: 600; --h1lh: 1.35; --h1mt: 38px; --h1mb: 8px;
+  --h2: 17.5px; --h2w: 600; --h2lh: 1.4; --h2mt: 30px; --h2mb: 6px;
+  --h3: 16px; --h3w: 600; --h3lh: 1.5; --h3mt: 24px; --h3mb: 4px;
+  --hh-gap: 12px;
+  --p-gap: 14px; --li-gap: 4px; --indent: 1.4em; --bold: 600;
+  --code-size: .875em; --pre-size: 14px; --table-size: 14.5px;
+  --link: #3b5bdb; --link-line: color-mix(in srgb, #3b5bdb 35%, transparent);
+}
+:root[data-theme="dark"] [data-v="d"] {
+  --doc-bg: #242424; --fg: #dadada; --strong: #f5f5f5; --muted: #9a9a9a; --faint: #5f5f5f;
+  --border: #383838; --border-strong: #4d4d4d; --code-bg: #2e2e2e; --accent: #8ea2ff; --zebra: #2a2a2a;
+  --link: #9db0ff; --link-line: color-mix(in srgb, #9db0ff 40%, transparent);
+}
+[data-v="d"] .doc :is(h1, h2, h3) { position: relative; }
+[data-v="d"] .doc :is(h1, h2, h3)::before {
+  position: absolute; right: 100%; margin-right: .7rem;
+  font: 400 13px/inherit var(--mono);
+  line-height: inherit;
+  color: var(--faint);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+[data-v="d"] .doc h1::before { content: "#"; }
+[data-v="d"] .doc h2::before { content: "##"; }
+[data-v="d"] .doc h3::before { content: "###"; }
+@container main (max-width: 760px) {
+  [data-v="d"] .doc :is(h1, h2, h3)::before { position: static; margin-right: .5em; }
+}
+[data-v="d"] .doc ul:not(.tasks) > li::marker { content: "-  "; font-family: var(--mono); font-size: .9em; }
+[data-v="d"] .doc ol > li::marker { font-family: var(--mono); font-size: .9em; }
+[data-v="d"] .doc :not(pre) > code::before,
+[data-v="d"] .doc :not(pre) > code::after { content: "`"; color: var(--faint); }
+[data-v="d"] .doc :not(pre) > code { background: none; padding: 0; }
+[data-v="d"] .doc blockquote { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); padding: 10px 14px; border-radius: 0 6px 6px 0; }
+[data-v="d"] .doc th { font-weight: 600; border-bottom: 2px solid var(--border-strong); }
+[data-v="d"] .doc :is(th, td) { padding: 7px 12px; }
+[data-v="d"] .doc tbody tr:nth-child(odd) td { background: var(--zebra); }
+[data-v="d"] .doc hr { border-top-style: dashed; border-color: var(--border-strong); }
+[data-v="d"] .doc pre { border-radius: 6px; }
+</style>
+</head>
+<body>
+
+<div class="lab">
+  <div class="lab-row">
+    <span class="lab-title">Типографика заметок</span>
+    <div class="seg" id="variants" role="group" aria-label="Вариант">
+      <button data-v="now"><kbd>0</kbd>Сейчас</button>
+      <button data-v="a"><kbd>1</kbd>A · Тихий</button>
+      <button data-v="b"><kbd>2</kbd>B · Плотный</button>
+      <button data-v="c"><kbd>3</kbd>C · Книжный</button>
+      <button data-v="d"><kbd>4</kbd>D · Маркдаун</button>
+    </div>
+    <span class="lab-spacer"></span>
+    <div class="seg" id="themes" role="group" aria-label="Тема">
+      <button data-theme="light">Светлая</button>
+      <button data-theme="dark">Тёмная</button>
+    </div>
+    <div class="seg" id="devices" role="group" aria-label="Устройство">
+      <button data-device="desktop">Десктоп</button>
+      <button data-device="phone">Телефон</button>
+    </div>
+  </div>
+  <div class="lab-info" id="info"></div>
+</div>
+
+<div class="stage">
+  <div class="app">
+    <header class="app-header">
+      <span class="burger" aria-hidden="true"></span>
+      <span class="brand">microdocs</span>
+      <span class="sync">синхронизировано</span>
+    </header>
+
+    <nav class="sidebar" aria-label="Страницы">
+      <div class="label"><span>Страницы</span><span>+</span></div>
+      <ul class="tree">
+        <li><span>Входящие</span></li>
+        <li class="open"><span>Проекты</span>
+          <ul>
+            <li class="open"><span>microdocs</span>
+              <ul>
+                <li><span class="sel">Переезд заметок из Notion</span></li>
+                <li><span>Требования</span></li>
+                <li><span>Выкатка</span></li>
+              </ul>
+            </li>
+            <li class="closed"><span>Дача</span></li>
+          </ul>
+        </li>
+        <li class="closed"><span>Дом</span></li>
+        <li><span>Книги 2026</span></li>
+        <li><span>Рецепты</span></li>
+      </ul>
+    </nav>
+
+    <main class="main" id="main" data-v="a">
+      <div class="column">
+        <div class="page-title">Переезд заметок из&nbsp;Notion</div>
+
+        <article class="doc">
+          <p>Notion перестал устраивать по двум причинам: он <strong>медленно открывается на&nbsp;телефоне</strong> и&nbsp;держит все данные у&nbsp;себя. Здесь собираю план переезда в&nbsp;microdocs&nbsp;— что переносим, в&nbsp;каком порядке и&nbsp;где ждать подвоха. Документ живой, <em>правлю его по&nbsp;ходу дела</em>.</p>
+
+          <h1>Зачем переезжаем</h1>
+          <p id="probe">Главное&nbsp;— скорость и&nbsp;контроль. Заметка должна открываться мгновенно, даже в&nbsp;метро без связи, а&nbsp;данные&nbsp;— лежать в&nbsp;собственном бакете в&nbsp;формате, который читается без всякого приложения: обычный Markdown, по&nbsp;файлу на&nbsp;страницу. Если через пять лет microdocs умрёт, тексты останутся&nbsp;— их откроет любой редактор. Вторая причина&nbsp;— привычка: за&nbsp;годы в&nbsp;Notion накопились сотни страниц, которые никто не&nbsp;перечитывает, и&nbsp;переезд&nbsp;— хороший повод разобрать завалы, а&nbsp;не&nbsp;тащить их за&nbsp;собой.</p>
+          <ul>
+            <li>Мгновенное открытие: локальная копия в&nbsp;IndexedDB, синхронизация в&nbsp;фоне.</li>
+            <li>Markdown как исходник&nbsp;— без проприетарных блоков и&nbsp;баз данных.</li>
+            <li>Свой хостинг в&nbsp;MWS Cloud, доступ только по&nbsp;клиентскому сертификату.
+              <ul>
+                <li>Сертификаты выпускаю сам, на&nbsp;каждое устройство&nbsp;— отдельный.</li>
+                <li>Отозвать потерянный телефон&nbsp;— одна команда.</li>
+              </ul>
+            </li>
+          </ul>
+
+          <h2>Что сравнивали</h2>
+          <p>Смотрели на&nbsp;три варианта. Критерии простые: работает&nbsp;ли офлайн, в&nbsp;каком виде лежат данные и&nbsp;сколько это стоит в&nbsp;месяц.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Вариант</th><th>Офлайн</th><th>Формат данных</th><th class="num">₽/мес</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Notion</td><td>частично</td><td>закрытый, экспорт в&nbsp;MD или HTML</td><td class="num">800</td></tr>
+                <tr><td>Obsidian + Sync</td><td>да</td><td>Markdown-файлы</td><td class="num">720</td></tr>
+                <tr><td>microdocs</td><td>да</td><td>Markdown в&nbsp;S3</td><td class="num">≈&nbsp;150</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Obsidian почти подошёл, но синхронизация на&nbsp;iOS капризничает, а&nbsp;плагины живут своей жизнью. Свой сервис дешевле и&nbsp;проще: в&nbsp;нём ровно те функции, которые нужны, и&nbsp;ни одной лишней.</p>
+
+          <h1>Как переезжаем</h1>
+          <h2>План</h2>
+          <ol>
+            <li>Выгрузить рабочее пространство Notion в&nbsp;Markdown вместе с&nbsp;подстраницами.</li>
+            <li>Прогнать импорт: скрипт разложит страницы по&nbsp;дереву и&nbsp;перепишет внутренние ссылки.</li>
+            <li>Вручную проверить десяток самых важных страниц&nbsp;— таблицы и&nbsp;вложенные списки ломаются чаще всего.</li>
+            <li>Две недели жить в&nbsp;обоих сервисах, потом закрыть Notion на&nbsp;запись.</li>
+          </ol>
+
+          <h3>Команда импорта</h3>
+          <p>Скрипт читает распакованный архив и&nbsp;пишет страницы сразу в&nbsp;бакет. Ключ <code>--dry-run</code> показывает, что будет создано, ничего не&nbsp;трогая.</p>
+<pre><code>node scripts/import-notion.mjs \
+  --from ~/Downloads/notion-export \
+  --dry-run</code></pre>
+
+          <h3>Перед выключением Notion</h3>
+          <ul class="tasks">
+            <li><label><input type="checkbox" checked aria-label="Готово"></label><span>Экспорт скачан и&nbsp;сохранён в&nbsp;двух местах</span></li>
+            <li><label><input type="checkbox" checked aria-label="Готово"></label><span>Импорт прошёл без ошибок</span></li>
+            <li><label><input type="checkbox" aria-label="Готово"></label><span>Проверены страницы с&nbsp;таблицами</span></li>
+            <li><label><input type="checkbox" aria-label="Готово"></label><span>Ссылки между страницами открываются и&nbsp;показывают актуальные заголовки</span></li>
+            <li><label><input type="checkbox" aria-label="Готово"></label><span>Выпущен сертификат для рабочего ноутбука</span></li>
+          </ul>
+
+          <blockquote><p>Хорошая система заметок&nbsp;— та, в&nbsp;которую не&nbsp;страшно писать. Если перед каждой записью нужно решать, куда её положить, писать перестаёшь.</p></blockquote>
+
+          <h2>Что может пойти не&nbsp;так</h2>
+          <p>Самое хрупкое место&nbsp;— базы данных Notion. <s>Попробуем сконвертировать их в&nbsp;таблицы</s> Их просто не&nbsp;переносим: экспортируются они в&nbsp;CSV, и&nbsp;в&nbsp;заметках им не&nbsp;место. Остальные риски:</p>
+          <ul>
+            <li><strong>Вложенные таблицы</strong> превращаются в&nbsp;плоский текст&nbsp;— такие страницы правлю руками.</li>
+            <li><em>Упоминания людей и&nbsp;дат</em> приезжают обычным текстом. Это приемлемо.</li>
+            <li>Картинки пока не&nbsp;поддерживаются: ссылки на&nbsp;них останутся, а&nbsp;сами файлы&nbsp;— нет.</li>
+          </ul>
+
+          <h3>Открытые вопросы</h3>
+          <p>Нужна&nbsp;ли история версий в&nbsp;интерфейсе с&nbsp;первого дня или хватит версионирования бакета? Пока склоняюсь ко&nbsp;второму&nbsp;— подробнее в&nbsp;<a href="#">требованиях</a>, раздел про историю.</p>
+
+          <hr>
+
+          <p>Итог: переезд&nbsp;— это вечер на&nbsp;подготовку и&nbsp;пара недель на&nbsp;привыкание. Ради заметок, которые открываются на&nbsp;телефоне за&nbsp;долю секунды, оно того стоит.</p>
+        </article>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+const VARIANTS = {
+  now: {
+    name: 'Сейчас',
+    idea: 'Mantine Typography как есть: заголовок h1 в тексте крупнее названия страницы',
+    specs: [['Шрифт', 'системный'], ['Текст', '14/1.55'], ['Заголовки', '34 · 26 · 22, жирные'], ['Название', '28'], ['Таблицы и чек-листы', 'не поддержаны']],
+  },
+  a: {
+    name: 'A · Тихий',
+    idea: 'системный шрифт, маленький шаг размеров, иерархия отбивками. Ориентир — Notion, Apple Notes',
+    specs: [['Шрифт', 'SF Pro / Segoe UI'], ['Текст', '16/1.6'], ['Заголовки', '24 · 20 · 17, полужирные'], ['Название', '32']],
+  },
+  b: {
+    name: 'B · Плотный',
+    idea: 'Inter, шкала ×1.125, h3 = размер текста; таблица сеткой, код в рамке. Ориентир — Linear, GitHub',
+    specs: [['Шрифт', 'Inter'], ['Текст', '15/1.55'], ['Заголовки', '20 · 17 · 15'], ['Название', '26']],
+  },
+  c: {
+    name: 'C · Книжный',
+    idea: 'антиква для долгого чтения: тире в списках, h3 курсивом, таблица «booktabs», переносы, тёплая бумага',
+    specs: [['Шрифт', 'Literata'], ['Текст', '17/1.62'], ['Заголовки', '23 · 19.5 · 17 курсив'], ['Название', '32']],
+  },
+  d: {
+    name: 'D · Маркдаун',
+    idea: 'заголовки почти размером с текст, уровень показан решётками на полях; маркеры и код — моноширинным. Ориентир — iA Writer, Bear',
+    specs: [['Шрифт', 'IBM Plex Sans + Mono'], ['Текст', '16/1.6'], ['Заголовки', '20 · 17.5 · 16'], ['Название', '28']],
+  },
+};
+
+const root = document.documentElement;
+const main = document.getElementById('main');
+const info = document.getElementById('info');
+
+function store(key, value) {
+  try { value === undefined ? (value = localStorage.getItem(key)) : localStorage.setItem(key, value); } catch { return null; }
+  return value;
+}
+
+/** Среднее число знаков в полных строках абзаца-пробника (последняя не в счёт). */
+function charsPerLine() {
+  const node = document.getElementById('probe').firstChild;
+  const range = document.createRange();
+  let top = null, lines = 0, lastStart = 0;
+  for (let i = 0; i < node.length; i++) {
+    range.setStart(node, i); range.setEnd(node, i + 1);
+    const rect = range.getClientRects()[0];
+    if (!rect) continue;
+    if (top === null || rect.top > top + 4) { top = rect.top; lines++; lastStart = i; }
+  }
+  return lines > 1 ? Math.round(lastStart / (lines - 1)) : node.length;
+}
+
+function renderInfo(v) {
+  const meta = VARIANTS[v];
+  const width = getComputedStyle(main).getPropertyValue('--measure').trim();
+  const n = charsPerLine();
+  // На телефоне норма короче: 30–50 знаков против 55–80 на десктопе.
+  const [lo, hi] = root.dataset.device === 'phone' ? [30, 50] : [55, 80];
+  const cls = n >= lo && n <= hi ? 'ok' : 'bad';
+  info.innerHTML =
+    `<b>${meta.name}</b><span>${meta.idea}</span>` +
+    meta.specs.map(([k, val]) => `<span class="spec">${k}: <i>${val}</i></span>`).join('') +
+    `<span class="spec">Колонка: <i>${width}</i></span>` +
+    `<span class="spec">Знаков в строке: <i class="${cls}">≈${n}</i></span>`;
+}
+
+function press(groupId, attr, value) {
+  document.querySelectorAll(`#${groupId} button`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === value)));
+}
+
+function setVariant(v) {
+  const max = main.scrollHeight - main.clientHeight;
+  const ratio = max > 0 ? main.scrollTop / max : 0;
+  main.dataset.v = v;
+  press('variants', 'v', v);
+  store('lab.variant', v);
+  main.scrollTop = ratio * (main.scrollHeight - main.clientHeight);
+  renderInfo(v);
+}
+function setTheme(t) { root.dataset.theme = t; press('themes', 'theme', t); store('lab.theme', t); }
+function setDevice(d) { root.dataset.device = d; press('devices', 'device', d); store('lab.device', d); renderInfo(main.dataset.v); }
+
+document.getElementById('variants').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setVariant(b.dataset.v); });
+document.getElementById('themes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTheme(b.dataset.theme); });
+document.getElementById('devices').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setDevice(b.dataset.device); });
+
+const ORDER = Object.keys(VARIANTS);
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const i = ORDER.indexOf(main.dataset.v);
+  if (/^[0-4]$/.test(e.key)) setVariant(ORDER[+e.key]);
+  else if (e.key === 'ArrowRight') setVariant(ORDER[(i + 1) % ORDER.length]);
+  else if (e.key === 'ArrowLeft') setVariant(ORDER[(i - 1 + ORDER.length) % ORDER.length]);
+  else if (e.key === 't') setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
+});
+document.querySelectorAll('.doc a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
+new ResizeObserver(() => renderInfo(main.dataset.v)).observe(main);
+
+const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+setTheme(store('lab.theme') || (prefersDark ? 'dark' : 'light'));
+setDevice(store('lab.device') || 'desktop');
+setVariant(VARIANTS[store('lab.variant')] ? store('lab.variant') : 'now');
+document.fonts.ready.then(() => renderInfo(main.dataset.v));
+</script>
+</body>
+</html>

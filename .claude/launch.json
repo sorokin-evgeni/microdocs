@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "microdocs-offline",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MICRODOCS_AWS_CREDENTIALS=/nonexistent", "npx", "vite", "--port", "5199", "--strictPort"],
+      "port": 5199
+    },
+    {
+      "name": "typography-lab",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5180", "--directory", "design"],
+      "port": 5180
     }
   ]
 }
