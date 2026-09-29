@@ -64,6 +64,11 @@ export function App() {
     closeNav();
   };
 
+  const handleOpenPage = (id: PageId) => {
+    if (base.tree && findNode(base.tree, id)) handleSelect(id);
+    else window.alert('Страницы, на которую ведёт ссылка, больше нет.');
+  };
+
   const handleDelete = (id: PageId) => {
     if (!base.tree) return;
     const node = findNode(base.tree, id);
@@ -163,6 +168,7 @@ export function App() {
                 pageId={selected.id}
                 body={page.body}
                 onChange={page.change}
+                onOpenPage={handleOpenPage}
               />
             )}
           </div>

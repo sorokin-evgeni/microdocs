@@ -141,6 +141,16 @@
   text-decoration-color: currentColor;
 }
 
+.md-editor .ProseMirror a[href] {
+  cursor: pointer;
+}
+
+/* Вложения сервер пока не отдаёт: ссылка видна, но никуда не ведёт. */
+.md-editor .ProseMirror a[href^='microdocs:asset/'] {
+  color: var(--doc-muted);
+  cursor: default;
+}
+
 /* Списки. Внутри пункта ProseMirror держит абзац — его отступ гасим. */
 
 .md-editor .ProseMirror :is(ul, ol) {

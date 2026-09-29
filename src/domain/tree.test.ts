@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Tree } from '../types';
 import {
+  ancestorIds,
   canMove,
   findNode,
   insertNode,
@@ -51,6 +52,12 @@ describe('поиск', () => {
   it('собирает идентификаторы поддерева вместе с корнем', () => {
     const a = findNode(fixture(), 'a');
     expect(a && subtreeIds(a)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('перечисляет предков от корня вниз', () => {
+    expect(ancestorIds(fixture(), 'c')).toEqual(['a', 'b']);
+    expect(ancestorIds(fixture(), 'e')).toEqual([]);
+    expect(ancestorIds(fixture(), 'нет')).toEqual([]);
   });
 });
 

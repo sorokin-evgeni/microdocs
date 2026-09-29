@@ -17,6 +17,19 @@ export function findNode(tree: Tree, id: PageId): TreeNode | null {
   return findIn(tree.roots, id);
 }
 
+/** Предки страницы от корня вниз, без неё самой. Нет такой страницы — пусто. */
+export function ancestorIds(tree: Tree, id: PageId): PageId[] {
+  const walk = (nodes: TreeNode[], path: PageId[]): PageId[] | null => {
+    for (const node of nodes) {
+      if (node.id === id) return path;
+      const found = walk(node.children, [...path, node.id]);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(tree.roots, []) ?? [];
+}
+
 /** Идентификаторы всего поддерева, включая его корень. */
 export function subtreeIds(node: TreeNode): PageId[] {
   return [node.id, ...node.children.flatMap(subtreeIds)];

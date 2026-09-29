@@ -24,8 +24,10 @@ function setup() {
     onMoveRequest: vi.fn(),
     onShift: vi.fn(),
   };
-  renderUI(<PageTree tree={tree} selectedId="a" {...handlers} />);
-  return { handlers, user: userEvent.setup() };
+  const { rerenderUI } = renderUI(<PageTree tree={tree} selectedId="a" {...handlers} />);
+  // Выбор извне дерева — так он приходит при переходе по ссылке.
+  const select = (id: string) => rerenderUI(<PageTree tree={tree} selectedId={id} {...handlers} />);
+  return { handlers, select, user: userEvent.setup() };
 }
 
 /**
@@ -59,6 +61,22 @@ describe('дерево страниц', () => {
 
     await user.click(screen.getByRole('button', { name: 'Развернуть: Первая' }));
     expect(screen.getByText('Вложенная')).toBeInTheDocument();
+  });
+
+  it('раскрывает свёрнутую ветку, когда в ней выбрали страницу', async () => {
+    const { select, user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Свернуть: Первая' }));
+    expect(screen.queryByText('Вложенная')).not.toBeInTheDocument();
+
+    select('b');
+    expect(screen.getByText('Вложенная')).toBeInTheDocument();
+  });
+
+  it('даёт свернуть ветку с текущей страницей', async () => {
+    const { select, user } = setup();
+    select('b');
+    await user.click(screen.getByRole('button', { name: 'Свернуть: Первая' }));
+    expect(screen.queryByText('Вложенная')).not.toBeInTheDocument();
   });
 
   it('запрашивает создание вложенной страницы', async () => {

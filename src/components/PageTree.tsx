@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActionIcon, Box, Group, Menu, Text, UnstyledButton } from '@mantine/core';
 import {
   IconArrowDown,
@@ -10,6 +10,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import type { PageId, Tree, TreeNode } from '../types';
+import { ancestorIds } from '../domain/tree';
 
 interface Props {
   tree: Tree;
@@ -24,6 +25,16 @@ interface Props {
 export function PageTree(props: Props) {
   // Храним свёрнутые: по умолчанию дерево раскрыто целиком.
   const [collapsed, setCollapsed] = useState<Set<PageId>>(new Set());
+
+  // Страница могла открыться по ссылке внутри свёрнутой ветки — раскрываем её предков.
+  // Только при смене выбора: свернуть ветку с текущей страницей по-прежнему можно.
+  useEffect(() => {
+    if (!props.selectedId) return;
+    const path = ancestorIds(props.tree, props.selectedId);
+    setCollapsed((prev) =>
+      path.some((id) => prev.has(id)) ? new Set([...prev].filter((id) => !path.includes(id))) : prev,
+    );
+  }, [props.selectedId]);
 
   const toggle = (id: PageId) =>
     setCollapsed((prev) => {
