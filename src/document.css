@@ -20,14 +20,21 @@
   --doc-link: var(--mantine-color-indigo-8);
 }
 
+/*
+ * Тёмная тема на фоне Mantine #242424 — ровная шкала контраста (APCA Lc):
+ * текст ≈ 78, название, заголовки и жирный ≈ 87, приглушённое ≈ 61.
+ * Почти белый (Lc 97) даёт ореол вокруг жирных букв и режет глаз, а приглушённое
+ * ниже 60 уже приходится разглядывать. Серые — нейтральные, без синевы;
+ * акцент и ссылка — приглушённый индиго: насыщенный цвет на тёмном «дрожит».
+ */
 :root[data-mantine-color-scheme='dark'] {
-  --doc-fg: #d6d8dc;
-  --doc-strong: #f1f2f4;
-  --doc-muted: #979ca4;
+  --doc-fg: #d4d4d4;
+  --doc-strong: #e3e3e3;
+  --doc-muted: #b8b8b8;
   --doc-border: #393b3f;
   --doc-code-bg: #2c2d30;
-  --doc-accent: #8ea2ff;
-  --doc-link: #9db0ff;
+  --doc-accent: #8e9be0;
+  --doc-link: #b2bcec;
 }
 
 .page-column {
