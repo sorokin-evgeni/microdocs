@@ -5,6 +5,9 @@ import { cleanup } from '@testing-library/react';
 // Без globals: true автоочистка Testing Library не подключается сама.
 afterEach(cleanup);
 
+// Интерфейс кое-что помнит в localStorage — тесты не должны видеть следы друг друга.
+afterEach(() => window.localStorage.clear());
+
 // jsdom не реализует то, на что опирается Mantine.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Tree } from '../types';
 import { PageTree } from './PageTree';
@@ -16,14 +16,16 @@ const tree: Tree = {
   ],
 };
 
+const setupHandlers = () => ({
+  onSelect: vi.fn(),
+  onCreateChild: vi.fn(),
+  onDelete: vi.fn(),
+  onMoveRequest: vi.fn(),
+  onShift: vi.fn(),
+});
+
 function setup() {
-  const handlers = {
-    onSelect: vi.fn(),
-    onCreateChild: vi.fn(),
-    onDelete: vi.fn(),
-    onMoveRequest: vi.fn(),
-    onShift: vi.fn(),
-  };
+  const handlers = setupHandlers();
   const { rerenderUI } = renderUI(<PageTree tree={tree} selectedId="a" {...handlers} />);
   // Выбор извне дерева — так он приходит при переходе по ссылке.
   const select = (id: string) => rerenderUI(<PageTree tree={tree} selectedId={id} {...handlers} />);
@@ -69,6 +71,32 @@ describe('дерево страниц', () => {
     expect(screen.queryByText('Вложенная')).not.toBeInTheDocument();
 
     select('b');
+    expect(screen.getByText('Вложенная')).toBeInTheDocument();
+  });
+
+  it('свёрнутые ветки переживают перезагрузку', async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Свернуть: Первая' }));
+    cleanup();
+
+    setup();
+    expect(screen.queryByText('Вложенная')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Развернуть: Первая' })).toBeInTheDocument();
+  });
+
+  it('после перезагрузки не раскрывает свёрнутую ветку с текущей страницей', async () => {
+    const { select, user } = setup();
+    select('b');
+    await user.click(screen.getByRole('button', { name: 'Свернуть: Первая' }));
+    cleanup();
+
+    renderUI(<PageTree tree={tree} selectedId="b" {...setupHandlers()} />);
+    expect(screen.queryByText('Вложенная')).not.toBeInTheDocument();
+  });
+
+  it('испорченное хранилище — дерево просто раскрыто', () => {
+    window.localStorage.setItem('microdocs:collapsed-pages', '{не json');
+    setup();
     expect(screen.getByText('Вложенная')).toBeInTheDocument();
   });
 
