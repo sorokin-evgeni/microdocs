@@ -4,6 +4,7 @@
 
 - Требования — [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
 - Что уже сделано и что нет — [docs/PROGRESS.md](docs/PROGRESS.md)
+- Приложения для Android и Mac — [docs/APPS.md](docs/APPS.md)
 
 ## Запуск
 
@@ -32,8 +33,11 @@ src/storage/    хранилища за одним интерфейсом PageSt
                 IndexedDB, сервер, и синхронизирующая обёртка над ними
 src/state/      состояние базы, тело страницы, отложенное сохранение
 src/components/ дерево, редактор, перенос страницы
+src/serviceWorker/ офлайн-кеш интерфейса и вложений
 server/api.ts   HTTP-контракт, о месте хранения не знает
 server/storage/ порт BaseStorage и адаптеры к нему
+android/        приложение для Android (WebView)
+desktop/        приложение для Mac (Electron)
 ```
 
 Серверное хранилище спрятано за портом `BaseStorage` в доменных терминах.
@@ -55,7 +59,10 @@ server/storage/ порт BaseStorage и адаптеры к нему
 ```
 
 Вложения пока кладут только импорты (`scripts/import-*.mjs`): загрузки файлов
-из приложения нет, и без сети картинки не показываются.
+из приложения нет. Без сети видны картинки, которые уже открывались.
+
+Сам интерфейс без сети отдаёт service worker из кеша. Новая версия ставится
+в фоне и включается кнопкой «Обновить» рядом со статусом синхронизации.
 
 История версий — версионирование объектов S3, своего механизма нет.
 
@@ -88,6 +95,16 @@ PORT=8443 npm start
 
 В разработке TLS нет, поэтому владелец берётся из `MICRODOCS_DEV_BASE`
 (по умолчанию `default`).
+
+## Приложения
+
+```bash
+scripts/build-android.sh   # APK, нужны JDK и Android SDK
+scripts/build-mac.sh       # DMG для Apple Silicon, только на macOS
+git tag v0.2.0 && git push origin v0.2.0   # оба файла в GitHub Releases
+```
+
+Подробно — установка, ключ подписи APK, ограничения — в [docs/APPS.md](docs/APPS.md).
 
 ## Важно
 

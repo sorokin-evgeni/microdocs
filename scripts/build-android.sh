@@ -3,7 +3,6 @@
 #
 #   scripts/build-android.sh              # подписать своим ключом из .secrets/android/
 #   scripts/build-android.sh --debug-key  # без своего ключа, отладочным (только для проверки)
-#   scripts/build-android.sh --install    # и поставить на телефон, подключённый по USB
 #
 # Результат: dist-native/android/microdocs-<версия>.apk
 #
@@ -18,11 +17,9 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 
 DEBUG_KEY=0
-INSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --debug-key) DEBUG_KEY=1 ;;
-    --install) INSTALL=1 ;;
     *) echo "Неизвестный аргумент: $arg" >&2; exit 2 ;;
   esac
 done
@@ -58,7 +55,7 @@ if [[ ! -d "$ANDROID_HOME/platforms/android-35" || ! -d "$ANDROID_HOME/build-too
   [[ -n "$SDKMANAGER" ]] || { echo "Не нашёл sdkmanager в $ANDROID_HOME" >&2; exit 1; }
   echo "== доустанавливаю Android SDK =="
   yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-  "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;34.0.0" "platform-tools"
+  "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;34.0.0"
 fi
 
 # --- ключ подписи ---
@@ -93,7 +90,3 @@ mkdir -p dist-native/android
 OUT="dist-native/android/microdocs-$VERSION$SUFFIX.apk"
 cp android/build/outputs/apk/release/*-release.apk "$OUT"
 echo "Готово: $OUT"
-
-if [[ $INSTALL == 1 ]]; then
-  "$ANDROID_HOME/platform-tools/adb" install -r "$OUT"
-fi

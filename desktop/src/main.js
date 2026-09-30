@@ -6,9 +6,9 @@
  *
  * Клиентский сертификат берётся из Связки ключей: Chromium сам предлагает те,
  * что подписаны центром, который назвал сервер, а Electron по умолчанию
- * выбирает первый из них.
+ * выбирает первый из них. Чужим сайтам сертификат не отдаётся.
  */
-import { app, BrowserWindow, nativeTheme, screen } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,8 +59,6 @@ function createWindow() {
     minHeight: MIN_SIZE.height,
     title: 'microdocs',
     show: false,
-    // Цвет фона страницы, чтобы при запуске не мелькало белым в тёмной теме.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#242424' : '#ffffff',
   });
 
   if (state.fullscreen) win.setFullScreen(true);
@@ -78,6 +76,13 @@ function createWindow() {
 
   void win.loadURL(APP_URL);
 }
+
+// Вместо адреса Electron передаёт «хост:порт».
+app.on('select-client-certificate', (event, _webContents, hostAndPort, _list, callback) => {
+  if (hostAndPort.split(':')[0] === new URL(APP_URL).hostname) return;
+  event.preventDefault();
+  callback();
+});
 
 app.whenReady().then(() => {
   createWindow();

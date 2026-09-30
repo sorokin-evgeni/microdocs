@@ -2,6 +2,7 @@ package ru.e40in.microdocs;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.security.KeyChain;
 import android.view.View;
@@ -87,6 +88,11 @@ public class MainActivity extends Activity {
     private class Client extends WebViewClient {
         @Override
         public void onReceivedClientCertRequest(WebView view, ClientCertRequest request) {
+            // Сертификат — только своему серверу, чужой сайт его не получит.
+            if (!request.getHost().equals(Uri.parse(BuildConfig.APP_URL).getHost())) {
+                request.ignore();
+                return;
+            }
             String saved = prefs().getString(CERT_ALIAS, null);
             if (saved != null) {
                 provide(request, saved);
