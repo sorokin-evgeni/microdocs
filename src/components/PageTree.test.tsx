@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, createEvent, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Tree } from '../types';
 import { PageTree } from './PageTree';
@@ -22,6 +22,7 @@ const setupHandlers = () => ({
   onDelete: vi.fn(),
   onMoveRequest: vi.fn(),
   onShift: vi.fn(),
+  onPlace: vi.fn(),
 });
 
 function setup() {
@@ -150,5 +151,58 @@ describe('дерево страниц', () => {
     await openMenu(user, 'Вторая');
     await user.click(screen.getByText('Удалить'));
     expect(handlers.onDelete).toHaveBeenCalledWith('c');
+  });
+});
+
+describe('перетаскивание', () => {
+  /** jsdom не раскладывает страницу — высоту строки задаём сами. */
+  function row(title: string) {
+    const element = screen.getByText(title).closest<HTMLElement>('[data-page-id]');
+    if (!element) throw new Error(`Нет строки «${title}»`);
+    element.getBoundingClientRect = () => DOMRect.fromRect({ y: 0, height: 40, width: 200 });
+    return element;
+  }
+
+  /** Тащит строку на другую; y — где отпустили, от верха строки высотой 40. */
+  function drag(from: string, to: string, y: number) {
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(row(from), { dataTransfer });
+    // В jsdom нет DragEvent, и координату из параметров событие не берёт.
+    const over = createEvent.dragOver(row(to), { dataTransfer });
+    Object.defineProperty(over, 'clientY', { value: y });
+    const allowed = !fireEvent(row(to), over);
+    fireEvent.drop(row(to), { dataTransfer });
+    return allowed;
+  }
+
+  it('на середину строки — вкладывает', () => {
+    const { handlers } = setup();
+    drag('Вторая', 'Вложенная', 20);
+    expect(handlers.onPlace).toHaveBeenCalledWith('c', 'b', 'inside');
+  });
+
+  it('на верх строки — ставит перед ней', () => {
+    const { handlers } = setup();
+    drag('Вторая', 'Первая', 5);
+    expect(handlers.onPlace).toHaveBeenCalledWith('c', 'a', 'before');
+  });
+
+  it('на низ строки — ставит после неё', () => {
+    const { handlers } = setup();
+    drag('Вторая', 'Вложенная', 35);
+    expect(handlers.onPlace).toHaveBeenCalledWith('c', 'b', 'after');
+  });
+
+  it('низ раскрытой ветки — внутрь: под ней уже идут её дети', () => {
+    const { handlers } = setup();
+    drag('Вторая', 'Первая', 35);
+    expect(handlers.onPlace).toHaveBeenCalledWith('c', 'a', 'inside');
+  });
+
+  it('не даёт бросить страницу в её же поддерево (FR-9)', () => {
+    const { handlers } = setup();
+    expect(drag('Первая', 'Вложенная', 20)).toBe(false);
+    expect(drag('Первая', 'Первая', 20)).toBe(false);
+    expect(handlers.onPlace).not.toHaveBeenCalled();
   });
 });

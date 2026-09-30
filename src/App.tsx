@@ -151,6 +151,7 @@ export function App() {
               onDelete={handleDelete}
               onMoveRequest={setMovingId}
               onShift={(id, delta) => void base.shiftPage(id, delta)}
+              onPlace={(id, targetId, position) => void base.placePage(id, targetId, position)}
             />
           )}
         </ScrollArea>
