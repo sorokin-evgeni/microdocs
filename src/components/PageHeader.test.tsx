@@ -59,7 +59,7 @@ describe('PageHeader', () => {
     expect(screen.queryByRole('button', { name: 'Убрать иконку' })).not.toBeInTheDocument();
   });
 
-  it('иконку показывает перед названием и даёт убрать', async () => {
+  it('иконку показывает над названием и даёт убрать', async () => {
     const user = userEvent.setup();
     const handlers = setup('🚀');
 

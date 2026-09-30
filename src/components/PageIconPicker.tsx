@@ -20,7 +20,7 @@ interface Props {
   onChange: (icon: string | null) => void;
 }
 
-/** Иконка страницы перед названием и выбор эмодзи с поиском, как в Notion. */
+/** Иконка страницы над названием и выбор эмодзи с поиском, как в Notion. */
 export function PageIconPicker({ icon, onChange }: Props) {
   const [opened, setOpened] = useState(false);
 
@@ -38,7 +38,12 @@ export function PageIconPicker({ icon, onChange }: Props) {
           onClick={() => setOpened((value) => !value)}
           aria-label={icon ? 'Сменить иконку' : 'Добавить иконку'}
         >
-          {icon ?? <IconMoodSmile size={24} stroke={1.5} />}
+          {icon ?? (
+            <>
+              <IconMoodSmile size={15} stroke={1.5} />
+              Добавить иконку
+            </>
+          )}
         </UnstyledButton>
       </Popover.Target>
 
