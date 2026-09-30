@@ -9,6 +9,7 @@ import {
   moveNode,
   removeNode,
   renameNode,
+  setNodeIcon,
   shiftNode,
 } from '../domain/tree';
 
@@ -89,6 +90,14 @@ export function useBase(
     [tree, apply],
   );
 
+  const setPageIcon = useCallback(
+    (id: PageId, icon: string | null) => {
+      if (!tree) return;
+      apply(setNodeIcon(tree, id, icon), { immediate: true });
+    },
+    [tree, apply],
+  );
+
   const deletePage = useCallback(
     (id: PageId) => {
       if (!tree) return;
@@ -124,6 +133,7 @@ export function useBase(
     select: setSelectedId,
     createPage,
     renamePage,
+    setPageIcon,
     deletePage,
     movePage,
     shiftPage,

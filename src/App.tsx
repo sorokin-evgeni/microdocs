@@ -21,6 +21,7 @@ import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
 import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
 import { PageHeader } from './components/PageHeader';
+import { ThemeToggle } from './components/ThemeToggle';
 import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
@@ -120,6 +121,7 @@ export function App() {
           >
             {syncState}
           </Text>
+          <ThemeToggle />
         </Group>
       </AppShell.Header>
 
@@ -161,7 +163,9 @@ export function App() {
           <div className="page-column">
             <PageHeader
               title={selected.title}
+              icon={selected.icon}
               onRename={(title) => base.renamePage(selected.id, title)}
+              onIconChange={(icon) => base.setPageIcon(selected.id, icon)}
               onCreateChild={() => void base.createPage(selected.id)}
               onMove={() => setMovingId(selected.id)}
               onDelete={() => handleDelete(selected.id)}

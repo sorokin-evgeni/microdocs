@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ActionIcon, Box, Group, Menu, Text, UnstyledButton } from '@mantine/core';
+import { useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -24,24 +25,30 @@ interface Props {
 
 export function PageTree(props: Props) {
   // Храним свёрнутые: по умолчанию дерево раскрыто целиком.
-  const [collapsed, setCollapsed] = useState<Set<PageId>>(new Set());
+  // Своё в каждом браузере, переживает перезагрузку.
+  const [collapsedIds, setCollapsedIds] = useLocalStorage<PageId[]>({
+    key: 'microdocs:collapsed-pages',
+    defaultValue: [],
+    getInitialValueInEffect: false,
+    deserialize: parseIds,
+  });
+  const collapsed = useMemo(() => new Set(collapsedIds), [collapsedIds]);
 
   // Страница могла открыться по ссылке внутри свёрнутой ветки — раскрываем её предков.
-  // Только при смене выбора: свернуть ветку с текущей страницей по-прежнему можно.
+  // Только при переходе, не при загрузке: свёрнутая ветка с текущей страницей
+  // остаётся свёрнутой и после перезагрузки.
+  const shownId = useRef(props.selectedId);
   useEffect(() => {
-    if (!props.selectedId) return;
+    if (!props.selectedId || props.selectedId === shownId.current) return;
+    shownId.current = props.selectedId;
     const path = ancestorIds(props.tree, props.selectedId);
-    setCollapsed((prev) =>
-      path.some((id) => prev.has(id)) ? new Set([...prev].filter((id) => !path.includes(id))) : prev,
+    setCollapsedIds((prev) =>
+      prev.some((id) => path.includes(id)) ? prev.filter((id) => !path.includes(id)) : prev,
     );
   }, [props.selectedId]);
 
   const toggle = (id: PageId) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+    setCollapsedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
     <Box>
@@ -57,6 +64,16 @@ export function PageTree(props: Props) {
       ))}
     </Box>
   );
+}
+
+/** Хранилище могли испортить руками — тогда просто всё раскрыто. */
+function parseIds(raw: string | undefined): PageId[] {
+  try {
+    const value: unknown = JSON.parse(raw ?? '[]');
+    return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 interface RowProps extends Props {
@@ -109,6 +126,7 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
           style={{ flex: 1, minWidth: 0, paddingBlock: 3 }}
         >
           <Text size="sm" truncate fw={isSelected ? 600 : 400}>
+            {node.icon && <span style={{ marginInlineEnd: 6 }}>{node.icon}</span>}
             {node.title || 'Без названия'}
           </Text>
         </UnstyledButton>

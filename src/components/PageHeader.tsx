@@ -1,22 +1,26 @@
 import type { ReactNode } from 'react';
 import { Button, Group, TextInput } from '@mantine/core';
 import { IconArrowsMove, IconPlus, IconTrash } from '@tabler/icons-react';
+import { PageIconPicker } from './PageIconPicker';
 
 interface Props {
   title: string;
+  icon: string | undefined;
   onRename: (title: string) => void;
+  onIconChange: (icon: string | null) => void;
   onCreateChild: () => void;
   onMove: () => void;
   onDelete: () => void;
 }
 
 /**
- * Название страницы и действия над ней. Те же действия есть в меню строки
- * дерева, здесь они всегда на виду.
+ * Иконка, название страницы и действия над ней. Те же действия есть в меню
+ * строки дерева, здесь они всегда на виду.
  */
 export function PageHeader(props: Props) {
   return (
-    <Group wrap="nowrap" gap="xs">
+    <Group wrap="nowrap" gap="xs" className="page-header">
+      <PageIconPicker icon={props.icon} onChange={props.onIconChange} />
       <TextInput
         value={props.title}
         onChange={(event) => props.onRename(event.currentTarget.value)}
