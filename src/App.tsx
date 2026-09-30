@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   AppShell,
+  Box,
   Burger,
   Group,
   ScrollArea,
@@ -22,6 +23,7 @@ import { MovePageModal } from './components/MovePageModal';
 import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
 import { PageHeader } from './components/PageHeader';
 import { ThemeToggle } from './components/ThemeToggle';
+import { Brand } from './components/Brand';
 import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
@@ -69,6 +71,12 @@ export function App() {
     closeNav();
   };
 
+  // Корень базы — её первая страница, как при заходе на «/».
+  const handleOpenRoot = () => {
+    const first = base.tree?.roots[0];
+    if (first) handleSelect(first.id);
+  };
+
   const handleOpenPage = (id: PageId) => {
     if (base.tree && findNode(base.tree, id)) handleSelect(id);
     else window.alert('Страницы, на которую ведёт ссылка, больше нет.');
@@ -101,19 +109,15 @@ export function App() {
       <AppShell.Header hiddenFrom="sm">
         <Group h="100%" px="sm" gap="sm">
           <Burger opened={navOpened} onClick={toggleNav} size="sm" aria-label="Меню" />
-          <Text size="sm" fw={600}>
-            microdocs
-          </Text>
+          <Brand onOpenRoot={handleOpenRoot} />
         </Group>
       </AppShell.Header>
 
       <AppShell.Navbar p={6}>
         {/* Шапка списка страниц. На телефоне вместо неё полоса сверху. */}
-        <Group visibleFrom="sm" h={40} px={4} wrap="nowrap">
-          <Text size="sm" fw={600}>
-            microdocs
-          </Text>
-        </Group>
+        <Box visibleFrom="sm" h={40} px={4}>
+          <Brand onOpenRoot={handleOpenRoot} />
+        </Box>
 
         <Group justify="space-between" px={4} pb={4} wrap="nowrap">
           <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
