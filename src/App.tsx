@@ -20,6 +20,7 @@ import { usePageBody } from './state/usePageBody';
 import { pageFromLocation, usePageUrl } from './state/usePageUrl';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
+import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
 import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
@@ -57,6 +58,7 @@ export function App() {
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
     useDisclosure(false);
   const [movingId, setMovingId] = useState<PageId | null>(null);
+  const [navWidth, setNavWidth] = useNavbarWidth();
 
   const selected =
     base.tree && base.selectedId ? findNode(base.tree, base.selectedId) : null;
@@ -87,7 +89,7 @@ export function App() {
     <AppShell
       header={{ height: 40 }}
       navbar={{
-        width: 260,
+        width: navWidth,
         breakpoint: 'sm',
         collapsed: { mobile: !navOpened },
       }}
@@ -150,6 +152,8 @@ export function App() {
             />
           )}
         </ScrollArea>
+
+        <NavbarResizer onResize={setNavWidth} />
       </AppShell.Navbar>
 
       <AppShell.Main>
