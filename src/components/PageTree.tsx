@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { ActionIcon, Box, Group, Menu, Text, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Box, Group, Menu, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowDown,
@@ -51,8 +51,9 @@ export function PageTree(props: Props) {
   const toggle = (id: PageId) =>
     setCollapsedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
+  // Строки идут одним плоским списком (Row отдаёт фрагменты), так что зазор — между всеми.
   return (
-    <Box>
+    <Stack gap={2}>
       {props.tree.roots.map((node) => (
         <Row
           key={node.id}
@@ -63,7 +64,7 @@ export function PageTree(props: Props) {
           {...props}
         />
       ))}
-    </Box>
+    </Stack>
   );
 }
 
@@ -92,18 +93,18 @@ function PageGlyph({ icon }: { icon: string | undefined }) {
   return (
     <Box
       component="span"
-      w={18}
+      w={20}
       style={{
         flexShrink: 0,
         display: 'inline-flex',
         justifyContent: 'center',
-        fontSize: 14,
+        fontSize: 16,
         lineHeight: 1,
       }}
     >
       {icon ?? (
         <IconFile
-          size={14}
+          size={16}
           stroke={1.5}
           aria-hidden
           style={{ color: 'var(--mantine-color-dimmed)', opacity: 0.55 }}
@@ -121,12 +122,12 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
   return (
     <>
       <Group
-        gap={2}
+        gap={4}
         wrap="nowrap"
-        pl={4 + depth * 12}
-        pr={4}
+        pl={6 + depth * 16}
+        pr={6}
         style={{
-          borderRadius: 4,
+          borderRadius: 6,
           background: isSelected
             ? 'var(--mantine-color-default-hover)'
             : undefined,
@@ -136,27 +137,27 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
           <ActionIcon
             variant="subtle"
             color="gray"
-            size={18}
+            size={20}
             onClick={() => onToggle(node.id)}
             aria-label={`${isOpen ? 'Свернуть' : 'Развернуть'}: ${node.title}`}
           >
             {isOpen ? (
-              <IconChevronDown size={13} />
+              <IconChevronDown size={14} />
             ) : (
-              <IconChevronRight size={13} />
+              <IconChevronRight size={14} />
             )}
           </ActionIcon>
         ) : (
           // Отступ вместо кнопки: скрытая кнопка осталась бы в дереве доступности.
-          <Box w={18} style={{ flexShrink: 0 }} />
+          <Box w={20} style={{ flexShrink: 0 }} />
         )}
 
         <UnstyledButton
           onClick={() => rest.onSelect(node.id)}
-          style={{ flex: 1, minWidth: 0, paddingBlock: 3, display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ flex: 1, minWidth: 0, paddingBlock: 4, display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <PageGlyph icon={node.icon} />
-          <Text size="sm" truncate fw={isSelected ? 600 : 400} style={{ flex: 1, minWidth: 0 }}>
+          <Text size="md" truncate fw={isSelected ? 600 : 400} style={{ flex: 1, minWidth: 0 }}>
             {node.title || 'Без названия'}
           </Text>
         </UnstyledButton>
@@ -166,10 +167,10 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
             <ActionIcon
               variant="subtle"
               color="gray"
-              size={18}
+              size={20}
               aria-label={`Действия: ${node.title}`}
             >
-              <IconDots size={13} />
+              <IconDots size={14} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
