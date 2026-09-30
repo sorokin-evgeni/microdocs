@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { ActionIcon, Box, Group, Menu, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import {
+  IconArchive,
   IconArrowDown,
   IconArrowUp,
   IconChevronDown,
@@ -20,6 +21,7 @@ interface Props {
   onSelect: (id: PageId) => void;
   onCreateChild: (parentId: PageId) => void;
   onDelete: (id: PageId) => void;
+  onArchive: (id: PageId) => void;
   onMoveRequest: (id: PageId) => void;
   onShift: (id: PageId, delta: -1 | 1) => void;
   onPlace: (id: PageId, targetId: PageId, position: DropPosition) => void;
@@ -174,7 +176,7 @@ interface RowProps extends Props {
  * Иконка страницы в слоте фиксированной ширины. Без своей иконки — бледный
  * серый листочек: названия стоят ровно, а взгляд не цепляется за пустышки.
  */
-function PageGlyph({ icon }: { icon: string | undefined }) {
+export function PageGlyph({ icon }: { icon: string | undefined }) {
   return (
     <Box
       component="span"
@@ -303,6 +305,12 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
             </Menu.Item>
             <Menu.Item onClick={() => rest.onMoveRequest(node.id)}>
               Переместить…
+            </Menu.Item>
+            <Menu.Item
+              leftSection={<IconArchive size={13} />}
+              onClick={() => rest.onArchive(node.id)}
+            >
+              Архивировать
             </Menu.Item>
             <Menu.Divider />
             <Menu.Item

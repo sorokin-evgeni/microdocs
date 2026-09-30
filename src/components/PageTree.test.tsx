@@ -20,6 +20,7 @@ const setupHandlers = () => ({
   onSelect: vi.fn(),
   onCreateChild: vi.fn(),
   onDelete: vi.fn(),
+  onArchive: vi.fn(),
   onMoveRequest: vi.fn(),
   onShift: vi.fn(),
   onPlace: vi.fn(),
@@ -144,6 +145,13 @@ describe('дерево страниц', () => {
     await openMenu(user, 'Вторая');
     await user.click(screen.getByText('Переместить…'));
     expect(handlers.onMoveRequest).toHaveBeenCalledWith('c');
+  });
+
+  it('запрашивает архивирование страницы', async () => {
+    const { handlers, user } = setup();
+    await openMenu(user, 'Вторая');
+    await user.click(screen.getByText('Архивировать'));
+    expect(handlers.onArchive).toHaveBeenCalledWith('c');
   });
 
   it('запрашивает удаление страницы', async () => {

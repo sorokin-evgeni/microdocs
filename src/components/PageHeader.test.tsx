@@ -15,6 +15,7 @@ function setup(icon?: string) {
     onIconChange: vi.fn(),
     onCreateChild: vi.fn(),
     onMove: vi.fn(),
+    onArchive: vi.fn(),
     onDelete: vi.fn(),
   };
   renderUI(<PageHeader title="Заметки" icon={icon} {...handlers} />);
@@ -22,9 +23,9 @@ function setup(icon?: string) {
 }
 
 describe('PageHeader', () => {
-  it('три действия видны сразу, без меню', () => {
+  it('действия видны сразу, без меню', () => {
     setup();
-    for (const name of ['Добавить вложенную', 'Переместить', 'Удалить']) {
+    for (const name of ['Добавить вложенную', 'Переместить', 'Архивировать', 'Удалить']) {
       expect(screen.getByRole('button', { name })).toBeVisible();
     }
   });
@@ -35,10 +36,12 @@ describe('PageHeader', () => {
 
     await user.click(screen.getByRole('button', { name: 'Добавить вложенную' }));
     await user.click(screen.getByRole('button', { name: 'Переместить' }));
+    await user.click(screen.getByRole('button', { name: 'Архивировать' }));
     await user.click(screen.getByRole('button', { name: 'Удалить' }));
 
     expect(handlers.onCreateChild).toHaveBeenCalledTimes(1);
     expect(handlers.onMove).toHaveBeenCalledTimes(1);
+    expect(handlers.onArchive).toHaveBeenCalledTimes(1);
     expect(handlers.onDelete).toHaveBeenCalledTimes(1);
   });
 

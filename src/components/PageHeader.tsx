@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button, Group, TextInput } from '@mantine/core';
-import { IconArrowsMove, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconArchive, IconArrowsMove, IconPlus, IconTrash } from '@tabler/icons-react';
 import { PageIconPicker } from './PageIconPicker';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   onIconChange: (icon: string | null) => void;
   onCreateChild: () => void;
   onMove: () => void;
+  onArchive: () => void;
   onDelete: () => void;
 }
 
@@ -39,6 +40,12 @@ export function PageHeader(props: Props) {
             onClick={props.onCreateChild}
           />
           <Action icon={<IconArrowsMove size={15} />} label="Переместить" onClick={props.onMove} />
+          <Action
+            icon={<IconArchive size={15} />}
+            label="В архив"
+            name="Архивировать"
+            onClick={props.onArchive}
+          />
           <Action icon={<IconTrash size={15} />} label="Удалить" onClick={props.onDelete} />
         </Group>
       </Group>

@@ -24,9 +24,10 @@ import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
 import { PageHeader } from './components/PageHeader';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Brand } from './components/Brand';
+import { ArchiveSection } from './components/ArchiveSection';
 import { Editor } from './components/Editor';
-import { findNode } from './domain/tree';
-import type { PageId } from './types';
+import { findNode, subtreeIds } from './domain/tree';
+import type { PageId, TreeNode } from './types';
 
 /**
  * Имя локального кеша в этом браузере. На сервере база определяется
@@ -79,6 +80,8 @@ export function App() {
 
   const handleOpenPage = (id: PageId) => {
     if (base.tree && findNode(base.tree, id)) handleSelect(id);
+    else if (base.tree?.archive?.some((e) => subtreeIds(e.node).includes(id)))
+      window.alert('Страница, на которую ведёт ссылка, в архиве.');
     else window.alert('Страницы, на которую ведёт ссылка, больше нет.');
   };
 
@@ -86,12 +89,13 @@ export function App() {
     if (!base.tree) return;
     const node = findNode(base.tree, id);
     if (!node) return;
-    const title = node.title || 'Без названия';
-    const question =
-      node.children.length > 0
-        ? `Удалить «${title}» вместе с вложенными страницами?`
-        : `Удалить «${title}»?`;
-    if (window.confirm(question)) void base.deletePage(id);
+    if (window.confirm(deleteQuestion(node))) void base.deletePage(id);
+  };
+
+  // Архивирование — без подтверждения: страницу можно вернуть. Удаление из архива — с ним.
+  const handleDeleteArchived = (id: PageId) => {
+    const node = base.tree?.archive?.find((e) => e.node.id === id)?.node;
+    if (node && window.confirm(deleteQuestion(node, ' насовсем'))) void base.deleteArchivedPage(id);
   };
 
   return (
@@ -142,12 +146,21 @@ export function App() {
               onSelect={handleSelect}
               onCreateChild={(parentId) => void base.createPage(parentId)}
               onDelete={handleDelete}
+              onArchive={(id) => void base.archivePage(id)}
               onMoveRequest={setMovingId}
               onShift={(id, delta) => void base.shiftPage(id, delta)}
               onPlace={(id, targetId, position) => void base.placePage(id, targetId, position)}
             />
           )}
         </ScrollArea>
+
+        {base.tree?.archive && (
+          <ArchiveSection
+            archive={base.tree.archive}
+            onRestore={(id) => void base.restorePage(id)}
+            onDelete={handleDeleteArchived}
+          />
+        )}
 
         <Group justify="space-between" px={4} pt={4} wrap="nowrap">
           <Text
@@ -178,6 +191,7 @@ export function App() {
               onIconChange={(icon) => base.setPageIcon(selected.id, icon)}
               onCreateChild={() => void base.createPage(selected.id)}
               onMove={() => setMovingId(selected.id)}
+              onArchive={() => base.archivePage(selected.id)}
               onDelete={() => handleDelete(selected.id)}
             />
             {page.body !== null && (
@@ -209,4 +223,12 @@ export function App() {
       )}
     </AppShell>
   );
+}
+
+/** Про вложенные страницы предупреждаем отдельно: уйдут вместе со страницей. */
+function deleteQuestion(node: TreeNode, how = ''): string {
+  const title = node.title || 'Без названия';
+  return node.children.length > 0
+    ? `Удалить «${title}»${how} вместе с вложенными страницами?`
+    : `Удалить «${title}»${how}?`;
 }

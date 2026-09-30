@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 import type { Tree } from '../types';
 import {
   ancestorIds,
+  archiveNode,
   canMove,
   findNode,
   insertNode,
   makeNode,
   moveNode,
   placeNode,
+  removeArchived,
   removeNode,
   renameNode,
+  restoreNode,
   setNodeIcon,
   shiftNode,
   subtreeIds,
@@ -123,6 +126,64 @@ describe('удаление', () => {
     const { tree, removed } = removeNode(fixture(), 'нет');
     expect(removed).toEqual([]);
     expect(titlesOfRoots(tree)).toEqual(['a', 'e']);
+  });
+});
+
+describe('архив', () => {
+  const archivedIds = (tree: Tree) => tree.archive?.map((e) => e.node.id) ?? [];
+
+  it('убирает ветку из дерева в архив вместе с поддеревом', () => {
+    const tree = archiveNode(fixture(), 'b');
+    expect(childIds(tree, 'a')).toEqual(['d']);
+    expect(findNode(tree, 'c')).toBeNull();
+    expect(tree.archive).toEqual([
+      { node: findNode(fixture(), 'b'), parentId: 'a', index: 0 },
+    ]);
+  });
+
+  it('восстанавливает на прежнее место среди соседей', () => {
+    const tree = restoreNode(archiveNode(fixture(), 'b'), 'b');
+    expect(tree).toEqual({ ...fixture(), archive: [] });
+  });
+
+  it('восстанавливает на верхний уровень на прежнюю позицию', () => {
+    const tree = restoreNode(archiveNode(fixture(), 'a'), 'a');
+    expect(titlesOfRoots(tree)).toEqual(['a', 'e']);
+    expect(childIds(tree, 'a')).toEqual(['b', 'd']);
+  });
+
+  it('соседей стало меньше — встаёт последней', () => {
+    let tree = archiveNode(fixture(), 'd');
+    tree = removeNode(tree, 'b').tree;
+    expect(childIds(restoreNode(tree, 'd'), 'a')).toEqual(['d']);
+  });
+
+  it('родителя больше нет — встаёт последней на верхний уровень', () => {
+    let tree = archiveNode(fixture(), 'c');
+    tree = archiveNode(tree, 'a');
+    tree = restoreNode(tree, 'c');
+    expect(titlesOfRoots(tree)).toEqual(['e', 'c']);
+    expect(archivedIds(tree)).toEqual(['a']);
+  });
+
+  it('удаляет из архива насовсем и возвращает идентификаторы поддерева', () => {
+    const { tree, removed } = removeArchived(archiveNode(fixture(), 'b'), 'b');
+    expect(removed).toEqual(['b', 'c']);
+    expect(archivedIds(tree)).toEqual([]);
+    expect(childIds(tree, 'a')).toEqual(['d']);
+  });
+
+  it('на несуществующем узле ничего не меняет', () => {
+    const original = fixture();
+    expect(archiveNode(original, 'нет')).toBe(original);
+    expect(restoreNode(original, 'нет')).toBe(original);
+    expect(removeArchived(original, 'нет')).toEqual({ tree: original, removed: [] });
+  });
+
+  it('не мутирует исходное дерево', () => {
+    const original = fixture();
+    restoreNode(archiveNode(original, 'b'), 'b');
+    expect(original).toEqual(fixture());
   });
 });
 

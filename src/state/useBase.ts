@@ -4,12 +4,16 @@ import type { PageStore } from '../storage/pageStore';
 import { seedBase } from '../domain/seed';
 import { useAutosave } from './useAutosave';
 import {
+  archiveNode,
+  findNode,
   insertNode,
   makeNode,
   moveNode,
   placeNode,
+  removeArchived,
   removeNode,
   renameNode,
+  restoreNode,
   setNodeIcon,
   shiftNode,
   type DropPosition,
@@ -113,6 +117,36 @@ export function useBase(
     [tree, apply, store, selectedId],
   );
 
+  const archivePage = useCallback(
+    (id: PageId) => {
+      if (!tree) return;
+      const next = archiveNode(tree, id);
+      apply(next, { immediate: true });
+      if (selectedId && !findNode(next, selectedId)) {
+        setSelectedId(next.roots[0]?.id ?? null);
+      }
+    },
+    [tree, apply, selectedId],
+  );
+
+  const restorePage = useCallback(
+    (id: PageId) => {
+      if (!tree) return;
+      apply(restoreNode(tree, id), { immediate: true });
+    },
+    [tree, apply],
+  );
+
+  const deleteArchivedPage = useCallback(
+    (id: PageId) => {
+      if (!tree) return;
+      const { tree: next, removed } = removeArchived(tree, id);
+      apply(next, { immediate: true });
+      void store.deleteBodies(removed);
+    },
+    [tree, apply, store],
+  );
+
   const movePage = useCallback(
     (id: PageId, newParentId: PageId | null) => {
       if (!tree) return;
@@ -145,6 +179,9 @@ export function useBase(
     renamePage,
     setPageIcon,
     deletePage,
+    archivePage,
+    restorePage,
+    deleteArchivedPage,
     movePage,
     placePage,
     shiftPage,

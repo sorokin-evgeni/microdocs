@@ -1,4 +1,4 @@
-import type { PageId, Tree, TreeNode } from '../types';
+import type { ArchivedNode, PageId, Tree, TreeNode } from '../types';
 
 /**
  * Операции над деревом страниц. Все функции чистые и возвращают новое дерево,
@@ -72,6 +72,60 @@ export function removeNode(
   return {
     tree: { ...tree, roots: dropFrom(tree.roots, id) },
     removed: subtreeIds(node),
+  };
+}
+
+/**
+ * Убирает ветку из дерева в архив, запоминая родителя и место среди соседей.
+ * Тела страниц остаются где были.
+ */
+export function archiveNode(tree: Tree, id: PageId): Tree {
+  const node = findNode(tree, id);
+  if (!node) return tree;
+  const parentId = ancestorIds(tree, id).at(-1) ?? null;
+  const siblings = parentId === null ? tree.roots : (findNode(tree, parentId)?.children ?? []);
+  const entry: ArchivedNode = { node, parentId, index: siblings.indexOf(node) };
+  return {
+    ...tree,
+    roots: dropFrom(tree.roots, id),
+    archive: [...(tree.archive ?? []), entry],
+  };
+}
+
+/**
+ * Возвращает ветку из архива на прежнее место. Соседей могло стать меньше —
+ * тогда встаёт последней. Родителя в дереве больше нет — последней на верхний уровень.
+ */
+export function restoreNode(tree: Tree, id: PageId): Tree {
+  const entry = tree.archive?.find((e) => e.node.id === id);
+  if (!entry) return tree;
+  const archive = tree.archive?.filter((e) => e !== entry);
+  const parent = entry.parentId === null ? null : findNode(tree, entry.parentId);
+
+  if (parent) {
+    return {
+      ...tree,
+      archive,
+      roots: replaceIn(tree.roots, parent.id, (n) => ({
+        ...n,
+        children: insertAt(n.children, entry.index, entry.node),
+      })),
+    };
+  }
+  const index = entry.parentId === null ? entry.index : tree.roots.length;
+  return { ...tree, archive, roots: insertAt(tree.roots, index, entry.node) };
+}
+
+/** Удаляет ветку из архива насовсем. Возвращает идентификаторы её страниц. */
+export function removeArchived(
+  tree: Tree,
+  id: PageId,
+): { tree: Tree; removed: PageId[] } {
+  const entry = tree.archive?.find((e) => e.node.id === id);
+  if (!entry) return { tree, removed: [] };
+  return {
+    tree: { ...tree, archive: tree.archive?.filter((e) => e !== entry) },
+    removed: subtreeIds(entry.node),
   };
 }
 
@@ -165,6 +219,12 @@ function replaceIn(
   return nodes.map((n) =>
     n.id === id ? fn(n) : { ...n, children: replaceIn(n.children, id, fn) },
   );
+}
+
+function insertAt(nodes: TreeNode[], index: number, node: TreeNode): TreeNode[] {
+  const next = [...nodes];
+  next.splice(index, 0, node);
+  return next;
 }
 
 function dropFrom(nodes: TreeNode[], id: PageId): TreeNode[] {

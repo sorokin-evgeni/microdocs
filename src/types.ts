@@ -1,1 +1,1 @@
-export type { PageId, Tree, TreeNode } from '../shared/types';
+export type { ArchivedNode, PageId, Tree, TreeNode } from '../shared/types';

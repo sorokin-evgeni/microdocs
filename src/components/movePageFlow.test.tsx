@@ -35,6 +35,7 @@ function MoveFlow({ onMoved }: { onMoved: (tree: Tree) => void }) {
         onSelect={vi.fn()}
         onCreateChild={vi.fn()}
         onDelete={vi.fn()}
+        onArchive={vi.fn()}
         onMoveRequest={setMovingId}
         onShift={vi.fn()}
         onPlace={vi.fn()}
