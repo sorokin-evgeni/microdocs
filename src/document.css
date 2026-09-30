@@ -1,10 +1,11 @@
 /*
- * Типографика страницы: вариант «Плотный» со стенда design/typography-lab.html.
+ * Типографика страницы: вариант «Плотный» со стенда design/typography-lab.html,
+ * увеличенный на ступень: текст 16 вместо 15, остальное пропорционально.
  *
  * Иерархия держится на весе и отбивках, а не на размере: заголовки в тексте
  * заметно меньше названия страницы, шаг шкалы ×1.125, h3 — размером с текст.
  * Отбивка над заголовком в 3–4 раза больше, чем под ним, чтобы он держался
- * своего текста. Колонка 640px — около 75 знаков в строке.
+ * своего текста. Колонка 640px — около 70 знаков в строке.
  */
 
 :root {
@@ -19,14 +20,21 @@
   --doc-link: var(--mantine-color-indigo-8);
 }
 
+/*
+ * Тёмная тема на фоне Mantine #242424 — ровная шкала контраста (APCA Lc):
+ * текст ≈ 78, название, заголовки и жирный ≈ 87, приглушённое ≈ 61.
+ * Почти белый (Lc 97) даёт ореол вокруг жирных букв и режет глаз, а приглушённое
+ * ниже 60 уже приходится разглядывать. Серые — нейтральные, без синевы;
+ * акцент и ссылка — приглушённый индиго: насыщенный цвет на тёмном «дрожит».
+ */
 :root[data-mantine-color-scheme='dark'] {
-  --doc-fg: #d6d8dc;
-  --doc-strong: #f1f2f4;
-  --doc-muted: #979ca4;
+  --doc-fg: #d4d4d4;
+  --doc-strong: #e3e3e3;
+  --doc-muted: #b8b8b8;
   --doc-border: #393b3f;
   --doc-code-bg: #2c2d30;
-  --doc-accent: #8ea2ff;
-  --doc-link: #9db0ff;
+  --doc-accent: #8e9be0;
+  --doc-link: #b2bcec;
 }
 
 .page-column {
@@ -36,6 +44,8 @@
   color: var(--doc-fg);
   font-family: var(--doc-font);
   font-feature-settings: 'cv11', 'ss03';
+  /* Подписи действий прячутся по ширине колонки, а не окна: её ужимает и список слева. */
+  container-type: inline-size;
 }
 
 @media (max-width: 560px) {
@@ -51,10 +61,21 @@
   color: var(--doc-strong);
   font-family: inherit;
   font-feature-settings: inherit;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 650;
   line-height: 1.25;
   letter-spacing: -0.022em;
+}
+
+/* Действия в строке названия: на узкой колонке остаются одни иконки. */
+.page-action-label {
+  margin-inline-start: 5px;
+}
+
+@container (max-width: 520px) {
+  .page-action-label {
+    display: none;
+  }
 }
 
 .md-editor {
@@ -64,7 +85,7 @@
 .md-editor .ProseMirror {
   outline: none;
   min-height: 60vh;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.55;
 }
 
@@ -85,7 +106,7 @@
 
 .md-editor .ProseMirror h1 {
   margin: 32px 0 8px;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 620;
   line-height: 1.3;
   letter-spacing: -0.014em;
@@ -93,14 +114,14 @@
 
 .md-editor .ProseMirror h2 {
   margin: 26px 0 6px;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.35;
   letter-spacing: -0.01em;
 }
 
 .md-editor .ProseMirror h3 {
   margin: 22px 0 4px;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.45;
   letter-spacing: -0.005em;
 }
@@ -109,7 +130,7 @@
 .md-editor .ProseMirror :is(h4, h5, h6) {
   margin: 18px 0 4px;
   color: var(--doc-muted);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.45;
 }
 
@@ -168,7 +189,7 @@
 
 .md-editor .ProseMirror table {
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.45;
 }
 
@@ -251,7 +272,7 @@
   border-radius: 6px;
   background: var(--doc-code-bg);
   font-family: var(--doc-mono);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
   overflow-x: auto;
 }

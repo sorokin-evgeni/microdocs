@@ -1,0 +1,32 @@
+/* Полоса захвата поверх серой границы списка, с запасом в обе стороны. */
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* Сама граница остаётся от Mantine; при наведении и перетаскивании её подсвечиваем. */
+.handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  transition: background-color 120ms;
+}
+
+.handle:hover::after,
+.handle[data-dragging]::after {
+  background: var(--mantine-primary-color-filled);
+}
+
+/* Пока тянут, страница должна идти за списком сразу, а не догонять его анимацией. */
+:global(.mantine-AppShell-root):has(.handle[data-dragging]) {
+  --app-shell-transition-duration: 0ms !important;
+}

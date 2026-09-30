@@ -6,7 +6,6 @@ import {
   Group,
   ScrollArea,
   Text,
-  TextInput,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconPlus } from '@tabler/icons-react';
@@ -17,8 +16,11 @@ import { createOutbox } from './storage/outbox';
 import { createSyncingStore, type SyncState } from './storage/syncingStore';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
+import { pageFromLocation, usePageUrl } from './state/usePageUrl';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
+import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
+import { PageHeader } from './components/PageHeader';
 import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
@@ -50,11 +52,13 @@ export function App() {
     return () => window.removeEventListener('online', drain);
   }, [store]);
 
-  const base = useBase(store);
+  const base = useBase(store, pageFromLocation);
+  usePageUrl(base.tree, base.selectedId, base.select);
   const page = usePageBody(store, base.selectedId);
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
     useDisclosure(false);
   const [movingId, setMovingId] = useState<PageId | null>(null);
+  const [navWidth, setNavWidth] = useNavbarWidth();
 
   const selected =
     base.tree && base.selectedId ? findNode(base.tree, base.selectedId) : null;
@@ -85,7 +89,7 @@ export function App() {
     <AppShell
       header={{ height: 40 }}
       navbar={{
-        width: 260,
+        width: navWidth,
         breakpoint: 'sm',
         collapsed: { mobile: !navOpened },
       }}
@@ -148,20 +152,19 @@ export function App() {
             />
           )}
         </ScrollArea>
+
+        <NavbarResizer onResize={setNavWidth} />
       </AppShell.Navbar>
 
       <AppShell.Main>
         {selected ? (
           <div className="page-column">
-            <TextInput
-              value={selected.title}
-              onChange={(event) =>
-                base.renamePage(selected.id, event.currentTarget.value)
-              }
-              placeholder="Без названия"
-              variant="unstyled"
-              classNames={{ input: 'page-title' }}
-              aria-label="Заголовок страницы"
+            <PageHeader
+              title={selected.title}
+              onRename={(title) => base.renamePage(selected.id, title)}
+              onCreateChild={() => void base.createPage(selected.id)}
+              onMove={() => setMovingId(selected.id)}
+              onDelete={() => handleDelete(selected.id)}
             />
             {page.body !== null && (
               <Editor
