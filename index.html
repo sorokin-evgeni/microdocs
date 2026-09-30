@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>microdocs</title>
+    <script>
+      // Тема до загрузки приложения, иначе в тёмной теме мелькает белый экран.
+      // Ключ и значения — как у localStorageColorSchemeManager в Mantine.
+      try {
+        var scheme = localStorage.getItem('mantine-color-scheme-value');
+        if (scheme !== 'light' && scheme !== 'dark') {
+          scheme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-mantine-color-scheme', scheme);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
