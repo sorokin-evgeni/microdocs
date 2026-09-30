@@ -11,8 +11,9 @@ import type { BaseStorage } from './port';
 /**
  * Адаптер к S3. Только здесь известно, что база — это объекты в бакете:
  *
- *   <baseId>/tree.json      структура
- *   <baseId>/pages/<id>.md  тело страницы
+ *   <baseId>/tree.json       структура
+ *   <baseId>/pages/<id>.md   тело страницы
+ *   <baseId>/assets/<путь>   вложения; пока их кладут только импорты
  *
  * Ключ к бакету живёт только на сервере и в браузер не попадает (NFR-17).
  * История версий держится на версионировании объектов (NFR-7), поэтому
@@ -33,6 +34,7 @@ export function createS3Storage(): BaseStorage {
 
   const treeKey = (baseId: string) => `${baseId}/tree.json`;
   const pageKey = (baseId: string, id: PageId) => `${baseId}/pages/${id}.md`;
+  const assetKey = (baseId: string, path: string) => `${baseId}/assets/${path}`;
 
   async function get(key: string): Promise<string | null> {
     try {
@@ -90,6 +92,20 @@ export function createS3Storage(): BaseStorage {
           Key: pageKey(baseId, pageId),
         }),
       );
+    },
+
+    // Файл читается в память целиком: вложения — картинки и документы на мегабайты.
+    async readAsset(baseId, path) {
+      try {
+        const res = await client.send(
+          new GetObjectCommand({ Bucket: bucket, Key: assetKey(baseId, path) }),
+        );
+        const body = await res.Body?.transformToByteArray();
+        return body ? { body, contentType: res.ContentType ?? null } : null;
+      } catch (error) {
+        if (isNotFound(error)) return null;
+        throw error;
+      }
     },
   };
 }

@@ -14,4 +14,13 @@ export interface BaseStorage {
   readPage(baseId: string, pageId: PageId): Promise<string | null>;
   writePage(baseId: string, pageId: PageId, markdown: string): Promise<void>;
   deletePage(baseId: string, pageId: PageId): Promise<void>;
+
+  /** Вложение по пути внутри вложений базы, например `buildin/5f54/Ticket.pdf`. */
+  readAsset(baseId: string, path: string): Promise<Asset | null>;
+}
+
+/** Файл как он лежит в хранилище. Тип — тот, с которым его записали, если записали. */
+export interface Asset {
+  body: Uint8Array;
+  contentType: string | null;
 }

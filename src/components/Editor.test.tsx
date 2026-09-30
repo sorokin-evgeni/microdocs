@@ -33,10 +33,10 @@ describe('переход по ссылкам', () => {
     expect(onOpenPage).not.toHaveBeenCalled();
   });
 
-  it('клик по вложению никуда не ведёт', async () => {
+  it('вложение открывается в новой вкладке с адреса сервера', async () => {
     const { onOpenPage, open } = setup();
     fireEvent.click(await screen.findByText('Ticket.pdf'));
+    expect(open).toHaveBeenCalledWith('/api/assets/buildin/5f54/Ticket.pdf', '_blank', 'noopener,noreferrer');
     expect(onOpenPage).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
   });
 });

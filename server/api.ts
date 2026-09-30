@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { basename, extname } from 'node:path';
 import type { Tree } from '../shared/types';
 import type { BaseStorage } from './storage/port';
 import { resolveBaseId } from './identity';
@@ -9,6 +10,7 @@ import { resolveBaseId } from './identity';
  *
  *   GET|PUT        /api/tree
  *   GET|PUT|DELETE /api/pages/:id
+ *   GET|HEAD       /api/assets/<путь>
  *
  * База в адресе не упоминается намеренно: её определяет сертификат клиента,
  * иначе можно было бы попросить чужую.
@@ -46,6 +48,16 @@ export function createApi(
           return true;
         }
         await handlePage(req, res, storage, baseId, id);
+        return true;
+      }
+
+      if (parts[1] === 'assets' && parts.length > 2) {
+        const path = assetPath(parts.slice(2));
+        if (!path) {
+          send(res, 400, { error: 'Недопустимый путь вложения' });
+          return true;
+        }
+        await handleAsset(req, res, storage, baseId, path);
         return true;
       }
 
@@ -123,6 +135,92 @@ async function handlePage(
   }
 
   send(res, 405, { error: 'Метод не поддерживается' });
+}
+
+const ASSET_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.json': 'application/json',
+  '.html': 'text/html; charset=utf-8',
+  '.zip': 'application/zip',
+  '.mp4': 'video/mp4',
+  '.mp3': 'audio/mpeg',
+};
+
+/**
+ * Открываются в браузере только картинки и PDF. Остальное — скачиванием:
+ * HTML или SVG, открытые с нашего адреса, исполнили бы свои скрипты
+ * с доступом к API. В <img> SVG при этом показывается — там скрипты не работают.
+ */
+const INLINE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp', '.ico', '.pdf']);
+
+async function handleAsset(
+  req: IncomingMessage,
+  res: ServerResponse,
+  storage: BaseStorage,
+  baseId: string,
+  path: string,
+) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    send(res, 405, { error: 'Метод не поддерживается' });
+    return;
+  }
+
+  const asset = await storage.readAsset(baseId, path);
+  if (!asset) {
+    send(res, 404, { error: 'Вложения нет' });
+    return;
+  }
+
+  const ext = extname(path).toLowerCase();
+  res.statusCode = 200;
+  res.setHeader('Content-Type', ASSET_TYPES[ext] ?? asset.contentType ?? 'application/octet-stream');
+  res.setHeader('Content-Length', String(asset.body.byteLength));
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Вложения личные: хранить копию может только браузер владельца.
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.setHeader(
+    'Content-Disposition',
+    `${INLINE.has(ext) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeRfc5987(basename(path))}`,
+  );
+  res.end(req.method === 'HEAD' ? undefined : asset.body);
+}
+
+/**
+ * Путь вложения из адреса. Каждая часть раскодируется отдельно, и после этого
+ * в ней не должно оказаться ни слэша, ни `..`, ни управляющих символов:
+ * путь уходит в ключ хранилища. Имена файлов бывают кириллическими, с пробелами
+ * и плюсами — поэтому здесь не isSafeSegment.
+ */
+function assetPath(segments: string[]): string | null {
+  const decoded: string[] = [];
+  for (const raw of segments) {
+    let part: string;
+    try {
+      part = decodeURIComponent(raw);
+    } catch {
+      return null;
+    }
+    if (!part || part === '.' || part === '..' || part.length > 255) return null;
+    if (/[/\\\u0000-\u001f\u007f]/.test(part)) return null;
+    decoded.push(part);
+  }
+  return decoded.join('/');
+}
+
+function encodeRfc5987(value: string): string {
+  return encodeURIComponent(value).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 /** Идентификаторы попадают в адресацию хранилища — ни слэша, ни `..`. */

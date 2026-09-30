@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { PageId, Tree } from '../shared/types';
-import type { BaseStorage } from './storage/port';
+import type { Asset, BaseStorage } from './storage/port';
 import { createApi } from './api';
 
 /** Хранилище в памяти: доказывает, что API не привязан к S3. */
-function memoryStorage(): BaseStorage & { dump: () => unknown } {
+function memoryStorage(): BaseStorage & {
+  dump: () => unknown;
+  putAsset: (baseId: string, path: string, body: string, contentType?: string) => void;
+  askedAssets: string[];
+} {
   const trees = new Map<string, Tree>();
   const pages = new Map<string, string>();
+  const assets = new Map<string, Asset>();
+  const askedAssets: string[] = [];
   const key = (baseId: string, pageId: PageId) => `${baseId}/${pageId}`;
 
   return {
@@ -27,6 +33,14 @@ function memoryStorage(): BaseStorage & { dump: () => unknown } {
     async deletePage(baseId, pageId) {
       pages.delete(key(baseId, pageId));
     },
+    async readAsset(baseId, path) {
+      askedAssets.push(`${baseId}/${path}`);
+      return assets.get(`${baseId}/${path}`) ?? null;
+    },
+    putAsset(baseId, path, body, contentType) {
+      assets.set(`${baseId}/${path}`, { body: Buffer.from(body, 'utf8'), contentType: contentType ?? null });
+    },
+    askedAssets,
     dump: () => ({ trees: [...trees], pages: [...pages] }),
   };
 }
@@ -39,14 +53,15 @@ function makeRequest(method: string, url: string, body = ''): IncomingMessage {
 }
 
 function makeResponse() {
-  const captured = { status: 0, contentType: '', body: '' };
+  const captured = { status: 0, contentType: '', body: '', headers: {} as Record<string, string> };
   const res = {
     statusCode: 0,
     setHeader(name: string, value: string) {
+      captured.headers[name.toLowerCase()] = value;
       if (name.toLowerCase() === 'content-type') captured.contentType = value;
     },
-    end(body: string) {
-      captured.body = body ?? '';
+    end(body?: string | Uint8Array) {
+      captured.body = typeof body === 'string' ? body : body ? Buffer.from(body).toString('utf8') : '';
       captured.status = (res as unknown as ServerResponse).statusCode;
     },
   };
@@ -134,6 +149,94 @@ describe('HTTP API', () => {
 
       expect((await call(storage, 'DELETE', '/api/pages/p1')).status).toBe(200);
       expect((await call(storage, 'GET', '/api/pages/p1')).status).toBe(404);
+    });
+  });
+
+  describe('вложения', () => {
+    it('картинка отдаётся с типом и открывается в браузере', async () => {
+      const storage = memoryStorage();
+      storage.putAsset('владелец', 'buildin/5f54/image.png', 'PNG-байты');
+
+      const get = await call(storage, 'GET', '/api/assets/buildin/5f54/image.png');
+      expect(get.status).toBe(200);
+      expect(get.body).toBe('PNG-байты');
+      expect(get.contentType).toBe('image/png');
+      expect(get.headers['content-disposition']).toMatch(/^inline;/);
+      expect(get.headers['x-content-type-options']).toBe('nosniff');
+      expect(get.headers['cache-control']).toContain('private');
+    });
+
+    it('кириллица, пробелы и плюсы в имени раскодируются в ключ', async () => {
+      const storage = memoryStorage();
+      storage.putAsset('владелец', 'Root_1/Отчёт за год+1.pdf', 'PDF');
+
+      const get = await call(
+        storage,
+        'GET',
+        `/api/assets/Root_1/${encodeURIComponent('Отчёт за год+1.pdf')}`,
+      );
+      expect(get.status).toBe(200);
+      expect(get.contentType).toBe('application/pdf');
+      expect(get.headers['content-disposition']).toContain(
+        `filename*=UTF-8''${encodeURIComponent('Отчёт за год+1.pdf')}`,
+      );
+    });
+
+    it('HTML и SVG не открываются на нашем адресе, а скачиваются', async () => {
+      const storage = memoryStorage();
+      storage.putAsset('владелец', 'a/page.html', '<script>alert(1)</script>', 'text/html');
+      storage.putAsset('владелец', 'a/pic.svg', '<svg/>');
+
+      for (const name of ['page.html', 'pic.svg']) {
+        const get = await call(storage, 'GET', `/api/assets/a/${name}`);
+        expect(get.status).toBe(200);
+        expect(get.headers['content-disposition']).toMatch(/^attachment;/);
+      }
+    });
+
+    it('неизвестное расширение — тип, с которым файл записали', async () => {
+      const storage = memoryStorage();
+      storage.putAsset('владелец', 'a/data.bin', 'x', 'application/x-custom');
+      const get = await call(storage, 'GET', '/api/assets/a/data.bin');
+      expect(get.contentType).toBe('application/x-custom');
+    });
+
+    it('HEAD отдаёт заголовки без тела', async () => {
+      const storage = memoryStorage();
+      storage.putAsset('владелец', 'a/image.png', 'PNG');
+      const head = await call(storage, 'HEAD', '/api/assets/a/image.png');
+      expect(head.status).toBe(200);
+      expect(head.headers['content-length']).toBe('3');
+      expect(head.body).toBe('');
+    });
+
+    it('нет такого — 404', async () => {
+      expect((await call(memoryStorage(), 'GET', '/api/assets/a/нет.png')).status).toBe(404);
+    });
+
+    it('записывать через API нельзя — 405', async () => {
+      expect((await call(memoryStorage(), 'PUT', '/api/assets/a/x.png', 'x')).status).toBe(405);
+    });
+
+    it('обход пути и мусор в адресе отвергаются, до хранилища не доходя', async () => {
+      const storage = memoryStorage();
+      for (const url of [
+        '/api/assets/a%2F..%2F..%2Fдругой%2Ftree.json',
+        '/api/assets/%2E%2E%2Fpages%2Fp1.md',
+        '/api/assets/a/..%5Csecret',
+        '/api/assets/a/%00.png',
+        '/api/assets/a/%E0%A4%A.png',
+      ]) {
+        expect((await call(storage, 'GET', url)).status, url).toBe(400);
+      }
+      expect(storage.askedAssets).toEqual([]);
+    });
+
+    it('чужие вложения не видны', async () => {
+      const storage = memoryStorage();
+      storage.putAsset('первый', 'a/image.png', 'моё');
+      expect((await call(storage, 'GET', '/api/assets/a/image.png', '', 'второй')).status).toBe(404);
+      expect(storage.askedAssets).toEqual(['второй/a/image.png']);
     });
   });
 

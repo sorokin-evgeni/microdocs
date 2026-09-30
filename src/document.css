@@ -145,10 +145,18 @@
   cursor: pointer;
 }
 
-/* Вложения сервер пока не отдаёт: ссылка видна, но никуда не ведёт. */
-.md-editor .ProseMirror a[href^='microdocs:asset/'] {
-  color: var(--doc-muted);
-  cursor: default;
+/* Картинки — во всю колонку, не шире. Строчные, как в Markdown. */
+
+.md-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+
+.md-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--doc-accent);
+  outline-offset: 2px;
 }
 
 /* Списки. Внутри пункта ProseMirror держит абзац — его отступ гасим. */
