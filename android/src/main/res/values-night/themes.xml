@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Тёмная тема системы: WebView отдаёт странице prefers-color-scheme: dark. -->
+    <style name="Theme.Microdocs" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/dark_background</item>
+        <item name="android:statusBarColor">@color/dark_background</item>
+        <item name="android:navigationBarColor">@color/dark_background</item>
+        <item name="android:colorAccent">#4C6EF5</item>
+    </style>
+</resources>

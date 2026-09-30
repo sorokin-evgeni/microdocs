@@ -1,0 +1,57 @@
+{
+  "name": "microdocs-desktop",
+  "productName": "microdocs",
+  "description": "microdocs для macOS",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/main.js",
+  "author": "microdocs",
+  "microdocsUrl": "https://notes.e40in.ru/",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac dmg --arm64"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "ru.e40in.microdocs",
+    "productName": "microdocs",
+    "copyright": "microdocs",
+    "directories": {
+      "output": "../dist-native/mac",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "ru",
+      "en"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "artifactName": "microdocs-${version}-arm64.${ext}",
+      "title": "microdocs ${version}"
+    }
+  }
+}

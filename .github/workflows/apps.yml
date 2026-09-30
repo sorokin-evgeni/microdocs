@@ -1,0 +1,88 @@
+# Сборка приложений теми же скриптами, что и локально.
+# Тег v* — релиз на GitHub с APK и DMG; пуш в ветку — проверка, что собирается.
+name: Приложения
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['**']
+    paths:
+      - 'android/**'
+      - 'desktop/**'
+      - 'scripts/build-android.sh'
+      - 'scripts/build-mac.sh'
+      - '.github/workflows/apps.yml'
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # номер сборки — число коммитов
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Сборка APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          MICRODOCS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then export MICRODOCS_VERSION="${GITHUB_REF_NAME#v}"; fi
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            MICRODOCS_KEYSTORE="$RUNNER_TEMP/release.p12" scripts/build-android.sh
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "::error::Нет секретов ANDROID_KEYSTORE_BASE64 и ANDROID_KEYSTORE_PASSWORD — см. scripts/android-keystore.sh"
+            exit 1
+          else
+            scripts/build-android.sh --debug-key
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: microdocs-android
+          path: dist-native/android/*.apk
+
+  mac:
+    runs-on: macos-latest # Apple Silicon
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Сборка DMG
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then export MICRODOCS_VERSION="${GITHUB_REF_NAME#v}"; fi
+          scripts/build-mac.sh
+      - name: Подпись цела, приложение запускается
+        run: |
+          app=dist-native/mac/mac-arm64/microdocs.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          "$app/Contents/MacOS/microdocs" & pid=$!
+          sleep 15
+          kill -0 "$pid"
+          kill "$pid"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: microdocs-mac
+          path: dist-native/mac/*.dmg
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [android, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" \
+            --title "microdocs $GITHUB_REF_NAME" --generate-notes
