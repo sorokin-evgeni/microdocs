@@ -93,3 +93,109 @@ describe('картинки в редакторе', () => {
     expect(markdownOf(e)).toBe('![x](microdocs:asset/buildin/5f54/image.png)');
   });
 });
+
+describe('таблицы в редакторе', () => {
+  // Настоящие таблицы из базы: пустые ячейки, даты-упоминания, буквальный <br>.
+  const FINANCE = ['| Name | Сумма |', '| --- | --- |', '|  | RUB 112,954.00 |', '|  | RUB 106,237.00 |'].join('\n');
+  const DIARY = [
+    '| Дата | Имя | Related to Еженедельно (Column) |',
+    '| --- | --- | --- |',
+    '| @January 1, 2020 |  |  |',
+    '| @January 2, 2020 |  |  |',
+  ].join('\n');
+  const ROLES = ['| Роль | L1 | L2 |', '| --- | --- | --- |', '| Lead QA | L1<br>ведёт группу | L2<br>стратегия |'].join('\n');
+
+  const edit = (e: Editor) =>
+    e.commands.insertContentAt(e.state.doc.content.size, { type: 'paragraph', content: [{ type: 'text', text: 'правка' }] });
+
+  /** Позиция начала текста в n-й ячейке тела таблицы (не заголовка). */
+  function cellTextPos(e: Editor, n = 0): number {
+    const found: number[] = [];
+    e.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableCell') found.push(pos + 2);
+    });
+    const pos = found[n];
+    if (pos === undefined) throw new Error(`В таблице нет ячейки №${n}`);
+    return pos;
+  }
+
+  function paste(e: Editor, html: string) {
+    const clipboard = document.createElement('div');
+    clipboard.innerHTML = html;
+    const doc = DOMParser.fromSchema(e.schema).parse(clipboard);
+    e.view.dispatch(e.state.tr.replaceWith(0, e.state.doc.content.size, doc.content));
+  }
+
+  it('показываются таблицей с заголовком', () => {
+    const html = open(FINANCE).getHTML();
+    expect(html).toContain('<table');
+    expect(html).toContain('<th');
+    expect(html).toContain('RUB 112,954.00</p></td>');
+  });
+
+  it.each([
+    ['расходы', FINANCE],
+    ['дневник', DIARY],
+  ])('таблица «%s» переживает правку страницы байт в байт', (_name, table) => {
+    const e = open(`До\n\n${table}\n\nПосле`);
+    edit(e);
+    expect(markdownOf(e)).toBe(`До\n\n${table}\n\nПосле\n\nправка`);
+  });
+
+  it('буквальный <br> в ячейке переживает правку', () => {
+    // tiptap-markdown пишет «<» и «>» в любом тексте как &lt; и &gt; (FR-22 в MVP не
+    // выполняется) — байты меняются, а после переоткрытия текст тот же.
+    const e = open(ROLES);
+    edit(e);
+    const reopened = open(markdownOf(e));
+    expect(reopened.getHTML()).toBe(open(`${ROLES}\n\nправка`).getHTML());
+    expect(reopened.getHTML()).toContain('<p>L1&lt;br&gt;ведёт группу</p>');
+  });
+
+  it('черта, набранная в ячейке, не делит её на две', () => {
+    const e = open(FINANCE);
+    e.view.dispatch(e.state.tr.insertText('a | b', cellTextPos(e)));
+    const saved = markdownOf(e);
+    expect(saved).toContain('| a \\| b | RUB 112,954.00 |');
+
+    const reopened = open(saved);
+    expect(reopened.getHTML()).toContain('<p>a | b</p>');
+    expect(markdownOf(reopened)).toBe(saved);
+  });
+
+  it('перенос строки в ячейке становится пробелом, таблица цела', () => {
+    const e = open(FINANCE);
+    const at = cellTextPos(e, 1) + 'RUB'.length;
+    e.view.dispatch(e.state.tr.insert(at, e.schema.node('hardBreak')));
+    const saved = markdownOf(e);
+    expect(saved).not.toContain('[');
+    expect(saved).toContain('|  | RUB 112,954.00 |');
+  });
+
+  it('Enter не делит ячейку на два абзаца', () => {
+    const e = open(FINANCE);
+    e.commands.setTextSelection(cellTextPos(e, 1) + 3);
+    expect(e.can().splitBlock()).toBe(false);
+  });
+
+  it('вставленная таблица с объединёнными ячейками пишется таблицей, а не [table]', () => {
+    const e = open('');
+    paste(e, '<table><tr><th colspan="2">Заголовок</th></tr><tr><td>a</td><td>b</td></tr></table>');
+    expect(markdownOf(e).trimEnd()).toBe(['| Заголовок |  |', '| --- | --- |', '| a | b |'].join('\n'));
+  });
+
+  it('таблица без заголовка получает его из первой строки', () => {
+    const e = open('');
+    paste(e, '<table><tr><td>x</td><td>y</td></tr><tr><td>1</td><td>2</td></tr></table>');
+    expect(markdownOf(e).trimEnd()).toBe(['| x | y |', '| --- | --- |', '| 1 | 2 |'].join('\n'));
+  });
+
+  it('два абзаца во вставленной ячейке не теряют текст', () => {
+    const e = open('');
+    paste(e, '<table><tr><th>h</th></tr><tr><td><p>первый</p><p>второй</p></td></tr></table>');
+    const saved = markdownOf(e);
+    expect(saved).not.toContain('[table]');
+    expect(saved).toContain('первый');
+    expect(saved).toContain('второй');
+  });
+});

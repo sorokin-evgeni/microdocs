@@ -159,6 +159,41 @@
   outline-offset: 2px;
 }
 
+/* Таблицы. Широкая прокручивается внутри колонки, а не раздвигает её. */
+
+.md-editor .ProseMirror .tableWrapper {
+  margin: 0 0 14px;
+  overflow-x: auto;
+}
+
+.md-editor .ProseMirror table {
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.md-editor .ProseMirror :is(th, td) {
+  border: 1px solid var(--doc-border);
+  padding: 5px 9px;
+  vertical-align: top;
+  min-width: 3em;
+}
+
+.md-editor .ProseMirror th {
+  background: var(--doc-code-bg);
+  color: var(--doc-strong);
+  font-weight: 600;
+  text-align: left;
+}
+
+.md-editor .ProseMirror :is(th, td) > p {
+  margin: 0;
+}
+
+.md-editor .ProseMirror .selectedCell {
+  background: color-mix(in srgb, var(--doc-accent) 14%, transparent);
+}
+
 /* Списки. Внутри пункта ProseMirror держит абзац — его отступ гасим. */
 
 .md-editor .ProseMirror :is(ul, ol) {

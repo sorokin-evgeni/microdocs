@@ -1,8 +1,10 @@
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { Markdown } from 'tiptap-markdown';
 import { LINK_SCHEME, assetLinkFromUrl, assetUrl, parseLink } from '../domain/links';
 import type { PageId } from '../types';
+import { serializeTable } from './markdownTable';
 
 /**
  * Картинка хранит в документе адрес как в Markdown — `microdocs:asset/<путь>`, —
@@ -30,6 +32,17 @@ const AssetImage = Image.extend({
   },
 });
 
+const MarkdownTable = Table.extend({
+  addStorage() {
+    return { ...this.parent?.(), markdown: { serialize: serializeTable, parse: {} } };
+  },
+});
+
+// В ячейке ровно один абзац: больше Markdown-таблица не выражает,
+// а собранное в интерфейсе сверх этого пропало бы при записи.
+const SingleLineCell = TableCell.extend({ content: 'paragraph' });
+const SingleLineHeader = TableHeader.extend({ content: 'paragraph' });
+
 /**
  * Расширения редактора. Отдельно от компонента — чтобы разбор и запись Markdown
  * проверялись тестами без React.
@@ -48,6 +61,11 @@ export function editorExtensions() {
     // В Markdown картинка — часть строки, поэтому и здесь она строчная:
     // блочная разорвала бы абзац, где рядом с ней есть текст.
     AssetImage.configure({ inline: true }),
+    // Ширину колонок Markdown не хранит — тянуть их мышью незачем.
+    MarkdownTable.configure({ resizable: false }),
+    TableRow,
+    SingleLineHeader,
+    SingleLineCell,
     Markdown.configure({
       html: false,
       // Неподдерживаемое не выбрасываем, а оставляем в исходнике (FR-23).
