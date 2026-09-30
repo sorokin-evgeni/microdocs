@@ -56,6 +56,13 @@ describe('дерево страниц', () => {
     expect(screen.getByRole('button', { name: /^💡\s*Идеи$/ })).toBeInTheDocument();
   });
 
+  it('без иконки ставит на её место листочек, не меняя имя кнопки', () => {
+    const plain: Tree = { roots: [{ id: 'x', title: 'Идеи', children: [] }] };
+    renderUI(<PageTree tree={plain} selectedId="x" {...setupHandlers()} />);
+    const button = screen.getByRole('button', { name: 'Идеи' });
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('сообщает о выборе страницы', async () => {
     const { handlers, user } = setup();
     await user.click(screen.getByText('Вторая'));

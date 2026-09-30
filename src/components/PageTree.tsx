@@ -7,6 +7,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconDots,
+  IconFile,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
@@ -83,6 +84,35 @@ interface RowProps extends Props {
   onToggle: (id: PageId) => void;
 }
 
+/**
+ * Иконка страницы в слоте фиксированной ширины. Без своей иконки — бледный
+ * серый листочек: названия стоят ровно, а взгляд не цепляется за пустышки.
+ */
+function PageGlyph({ icon }: { icon: string | undefined }) {
+  return (
+    <Box
+      component="span"
+      w={18}
+      style={{
+        flexShrink: 0,
+        display: 'inline-flex',
+        justifyContent: 'center',
+        fontSize: 14,
+        lineHeight: 1,
+      }}
+    >
+      {icon ?? (
+        <IconFile
+          size={14}
+          stroke={1.5}
+          aria-hidden
+          style={{ color: 'var(--mantine-color-dimmed)', opacity: 0.55 }}
+        />
+      )}
+    </Box>
+  );
+}
+
 function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
   const hasChildren = node.children.length > 0;
   const isOpen = !collapsed.has(node.id);
@@ -123,10 +153,10 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
 
         <UnstyledButton
           onClick={() => rest.onSelect(node.id)}
-          style={{ flex: 1, minWidth: 0, paddingBlock: 3 }}
+          style={{ flex: 1, minWidth: 0, paddingBlock: 3, display: 'flex', alignItems: 'center', gap: 4 }}
         >
-          <Text size="sm" truncate fw={isSelected ? 600 : 400}>
-            {node.icon && <span style={{ marginInlineEnd: 6 }}>{node.icon}</span>}
+          <PageGlyph icon={node.icon} />
+          <Text size="sm" truncate fw={isSelected ? 600 : 400} style={{ flex: 1, minWidth: 0 }}>
             {node.title || 'Без названия'}
           </Text>
         </UnstyledButton>
