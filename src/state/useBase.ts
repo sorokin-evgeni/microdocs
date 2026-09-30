@@ -4,6 +4,7 @@ import type { PageStore } from '../storage/pageStore';
 import { seedBase } from '../domain/seed';
 import { useAutosave } from './useAutosave';
 import {
+  ancestorIds,
   archiveNode,
   findNode,
   insertNode,
@@ -122,8 +123,10 @@ export function useBase(
       if (!tree) return;
       const next = archiveNode(tree, id);
       apply(next, { immediate: true });
+      // Открытая страница ушла в архив — переходим к родителю ветки,
+      // а у верхнего уровня родителя нет — к первой странице.
       if (selectedId && !findNode(next, selectedId)) {
-        setSelectedId(next.roots[0]?.id ?? null);
+        setSelectedId(ancestorIds(tree, id).at(-1) ?? next.roots[0]?.id ?? null);
       }
     },
     [tree, apply, selectedId],
