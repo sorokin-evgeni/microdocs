@@ -50,6 +50,12 @@ describe('дерево страниц', () => {
     expect(screen.getByText('Вторая')).toBeInTheDocument();
   });
 
+  it('показывает иконку перед названием', () => {
+    const withIcon: Tree = { roots: [{ id: 'x', title: 'Идеи', icon: '💡', children: [] }] };
+    renderUI(<PageTree tree={withIcon} selectedId="x" {...setupHandlers()} />);
+    expect(screen.getByRole('button', { name: /^💡\s*Идеи$/ })).toBeInTheDocument();
+  });
+
   it('сообщает о выборе страницы', async () => {
     const { handlers, user } = setup();
     await user.click(screen.getByText('Вторая'));

@@ -54,6 +54,14 @@ export function renameNode(tree: Tree, id: PageId, title: string): Tree {
   return { ...tree, roots: replaceIn(tree.roots, id, (n) => ({ ...n, title })) };
 }
 
+/** Ставит иконку странице; null убирает поле целиком, а не оставляет пустым. */
+export function setNodeIcon(tree: Tree, id: PageId, icon: string | null): Tree {
+  return {
+    ...tree,
+    roots: replaceIn(tree.roots, id, ({ icon: _old, ...node }) => (icon ? { ...node, icon } : node)),
+  };
+}
+
 /** Убирает узел вместе с поддеревом. Возвращает идентификаторы удалённых страниц. */
 export function removeNode(
   tree: Tree,

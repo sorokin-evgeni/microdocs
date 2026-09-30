@@ -4,6 +4,8 @@ export type PageId = string;
 export interface TreeNode {
   id: PageId;
   title: string;
+  /** Эмодзи перед названием. Нет поля — нет иконки. */
+  icon?: string;
   children: TreeNode[];
 }
 

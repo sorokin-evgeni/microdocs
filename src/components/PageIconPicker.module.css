@@ -1,0 +1,120 @@
+/* Кнопка иконки в строке названия: высотой с название, эмодзи — его размера. */
+.trigger {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--mantine-radius-sm);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.trigger:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+/* Пока иконки нет — бледный смайлик, только при наведении на строку названия. */
+.trigger[data-empty] {
+  color: var(--mantine-color-dimmed);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+:global(.page-header):hover .trigger[data-empty],
+.trigger[data-empty]:focus-visible,
+.trigger[data-empty][aria-expanded='true'] {
+  opacity: 1;
+}
+
+/* На телефоне наводить нечем — видно всегда. */
+@media (hover: none) {
+  .trigger[data-empty] {
+    opacity: 1;
+  }
+}
+
+/* Выбор эмодзи. frimousse без стилей, всё оформление здесь. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  width: fit-content;
+  height: 340px;
+  isolation: isolate;
+}
+
+.search {
+  z-index: 1;
+  margin: 8px 8px 4px;
+  padding: 6px 9px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: transparent;
+  color: var(--mantine-color-text);
+  font: inherit;
+  font-size: var(--mantine-font-size-sm);
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--mantine-primary-color-filled);
+}
+
+.viewport {
+  position: relative;
+  flex: 1;
+  outline: none;
+}
+
+.message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.list {
+  padding-bottom: 6px;
+  user-select: none;
+}
+
+/* Заголовок категории липнет к верху — фон как у выпадающего окна Mantine. */
+.category {
+  padding: 8px 10px 4px;
+  background: var(--mantine-color-white);
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+}
+
+:global([data-mantine-color-scheme='dark']) .category {
+  background: var(--mantine-color-dark-6);
+}
+
+.row {
+  padding-inline: 6px;
+  scroll-margin-block: 6px;
+}
+
+.emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  background: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.emoji[data-active] {
+  background: var(--mantine-color-default-hover);
+}

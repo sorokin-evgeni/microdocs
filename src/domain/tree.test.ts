@@ -9,6 +9,7 @@ import {
   moveNode,
   removeNode,
   renameNode,
+  setNodeIcon,
   shiftNode,
   subtreeIds,
 } from './tree';
@@ -88,6 +89,24 @@ describe('переименование', () => {
     const tree = renameNode(fixture(), 'c', 'Новое');
     expect(findNode(tree, 'c')?.title).toBe('Новое');
     expect(findNode(tree, 'b')?.title).toBe('B');
+  });
+});
+
+describe('иконка', () => {
+  it('ставит и меняет иконку, не трогая остальное', () => {
+    const tree = setNodeIcon(setNodeIcon(fixture(), 'c', '🚀'), 'c', '📚');
+    expect(findNode(tree, 'c')).toEqual({ id: 'c', title: 'C', icon: '📚', children: [] });
+    expect(findNode(tree, 'b')?.icon).toBeUndefined();
+  });
+
+  it('null убирает поле целиком', () => {
+    const tree = setNodeIcon(setNodeIcon(fixture(), 'c', '🚀'), 'c', null);
+    expect(findNode(tree, 'c')).toEqual({ id: 'c', title: 'C', children: [] });
+  });
+
+  it('иконка переезжает вместе со страницей', () => {
+    const tree = moveNode(setNodeIcon(fixture(), 'c', '🚀'), 'c', null);
+    expect(findNode(tree, 'c')?.icon).toBe('🚀');
   });
 });
 

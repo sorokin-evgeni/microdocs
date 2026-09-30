@@ -163,7 +163,9 @@ export function App() {
           <div className="page-column">
             <PageHeader
               title={selected.title}
+              icon={selected.icon}
               onRename={(title) => base.renamePage(selected.id, title)}
+              onIconChange={(icon) => base.setPageIcon(selected.id, icon)}
               onCreateChild={() => void base.createPage(selected.id)}
               onMove={() => setMovingId(selected.id)}
               onDelete={() => handleDelete(selected.id)}

@@ -126,6 +126,7 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
           style={{ flex: 1, minWidth: 0, paddingBlock: 3 }}
         >
           <Text size="sm" truncate fw={isSelected ? 600 : 400}>
+            {node.icon && <span style={{ marginInlineEnd: 6 }}>{node.icon}</span>}
             {node.title || 'Без названия'}
           </Text>
         </UnstyledButton>
