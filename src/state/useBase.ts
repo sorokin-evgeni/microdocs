@@ -7,10 +7,12 @@ import {
   insertNode,
   makeNode,
   moveNode,
+  placeNode,
   removeNode,
   renameNode,
   setNodeIcon,
   shiftNode,
+  type DropPosition,
 } from '../domain/tree';
 
 /**
@@ -119,6 +121,14 @@ export function useBase(
     [tree, apply],
   );
 
+  const placePage = useCallback(
+    (id: PageId, targetId: PageId, position: DropPosition) => {
+      if (!tree) return;
+      apply(placeNode(tree, id, targetId, position), { immediate: true });
+    },
+    [tree, apply],
+  );
+
   const shiftPage = useCallback(
     (id: PageId, delta: -1 | 1) => {
       if (!tree) return;
@@ -136,6 +146,7 @@ export function useBase(
     setPageIcon,
     deletePage,
     movePage,
+    placePage,
     shiftPage,
   };
 }

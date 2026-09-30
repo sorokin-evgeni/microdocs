@@ -37,6 +37,7 @@ function MoveFlow({ onMoved }: { onMoved: (tree: Tree) => void }) {
         onDelete={vi.fn()}
         onMoveRequest={setMovingId}
         onShift={vi.fn()}
+        onPlace={vi.fn()}
       />
       <MovePageModal
         tree={tree}

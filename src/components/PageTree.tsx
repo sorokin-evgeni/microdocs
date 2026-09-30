@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { ActionIcon, Box, Group, Menu, Text, UnstyledButton } from '@mantine/core';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { ActionIcon, Box, Group, Menu, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowDown,
@@ -12,7 +12,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import type { PageId, Tree, TreeNode } from '../types';
-import { ancestorIds } from '../domain/tree';
+import { ancestorIds, canMove, findNode, type DropPosition } from '../domain/tree';
 
 interface Props {
   tree: Tree;
@@ -22,7 +22,16 @@ interface Props {
   onDelete: (id: PageId) => void;
   onMoveRequest: (id: PageId) => void;
   onShift: (id: PageId, delta: -1 | 1) => void;
+  onPlace: (id: PageId, targetId: PageId, position: DropPosition) => void;
 }
+
+interface DropTarget {
+  id: PageId;
+  position: DropPosition;
+}
+
+/** Свой тип данных: обычный текст вставился бы в редактор, если бросить строку туда. */
+const DRAG_TYPE = 'application/x-microdocs-page';
 
 export function PageTree(props: Props) {
   // Храним свёрнутые: по умолчанию дерево раскрыто целиком.
@@ -51,8 +60,65 @@ export function PageTree(props: Props) {
   const toggle = (id: PageId) =>
     setCollapsedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
+  // Перетаскивание мышью, нативное браузерное. Обработчики общие на весь список,
+  // строку находим по data-page-id.
+  const [draggedId, setDraggedId] = useState<PageId | null>(null);
+  const [drop, setDrop] = useState<DropTarget | null>(null);
+  const endDrag = () => {
+    setDraggedId(null);
+    setDrop(null);
+  };
+
+  const onDragStart = (event: DragEvent<HTMLElement>) => {
+    const id = rowOf(event.target)?.dataset.pageId;
+    if (!id) return;
+    event.dataTransfer.effectAllowed = 'move';
+    // Firefox без данных не начинает перетаскивание.
+    event.dataTransfer.setData(DRAG_TYPE, id);
+    setDraggedId(id);
+  };
+
+  const onDragOver = (event: DragEvent<HTMLElement>) => {
+    if (!draggedId) return;
+    const row = rowOf(event.target);
+    const targetId = row?.dataset.pageId;
+    if (!row || !targetId) {
+      // Зазор между строками: цель прежняя, иначе метка мигала бы на каждой границе.
+      if (drop) event.preventDefault();
+      return;
+    }
+    if (!canMove(props.tree, draggedId, targetId)) {
+      setDrop(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const target = findNode(props.tree, targetId);
+    const openBranch = !!target && target.children.length > 0 && !collapsed.has(targetId);
+    const position = positionAt(event.clientY, row.getBoundingClientRect(), openBranch);
+    if (drop?.id !== targetId || drop.position !== position) setDrop({ id: targetId, position });
+  };
+
+  const onDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDrop(null);
+  };
+
+  const onDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    if (draggedId && drop) props.onPlace(draggedId, drop.id, drop.position);
+    endDrag();
+  };
+
+  // Строки идут одним плоским списком (Row отдаёт фрагменты), так что зазор — между всеми.
   return (
-    <Box>
+    <Stack
+      gap={2}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={endDrag}
+    >
       {props.tree.roots.map((node) => (
         <Row
           key={node.id}
@@ -60,11 +126,29 @@ export function PageTree(props: Props) {
           depth={0}
           collapsed={collapsed}
           onToggle={toggle}
+          draggedId={draggedId}
+          drop={drop}
           {...props}
         />
       ))}
-    </Box>
+    </Stack>
   );
+}
+
+function rowOf(target: EventTarget): HTMLElement | null {
+  return (target as Element).closest<HTMLElement>('[data-page-id]');
+}
+
+/**
+ * Верхняя четверть строки — перед ней, нижняя — после, середина — внутрь.
+ * Под раскрытой веткой сразу идут её дети, и «после» легло бы не туда, куда
+ * показывает метка, — поэтому у раскрытой ветки вся нижняя часть значит «внутрь».
+ */
+function positionAt(y: number, rect: DOMRect, openBranch: boolean): DropPosition {
+  const offset = (y - rect.top) / rect.height;
+  if (offset < 0.25) return 'before';
+  if (offset > 0.75 && !openBranch) return 'after';
+  return 'inside';
 }
 
 /** Хранилище могли испортить руками — тогда просто всё раскрыто. */
@@ -82,6 +166,8 @@ interface RowProps extends Props {
   depth: number;
   collapsed: Set<PageId>;
   onToggle: (id: PageId) => void;
+  draggedId: PageId | null;
+  drop: DropTarget | null;
 }
 
 /**
@@ -92,18 +178,18 @@ function PageGlyph({ icon }: { icon: string | undefined }) {
   return (
     <Box
       component="span"
-      w={18}
+      w={20}
       style={{
         flexShrink: 0,
         display: 'inline-flex',
         justifyContent: 'center',
-        fontSize: 14,
+        fontSize: 16,
         lineHeight: 1,
       }}
     >
       {icon ?? (
         <IconFile
-          size={14}
+          size={16}
           stroke={1.5}
           aria-hidden
           style={{ color: 'var(--mantine-color-dimmed)', opacity: 0.55 }}
@@ -117,46 +203,70 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
   const hasChildren = node.children.length > 0;
   const isOpen = !collapsed.has(node.id);
   const isSelected = rest.selectedId === node.id;
+  const dropHere = rest.drop?.id === node.id ? rest.drop.position : null;
+  const indent = 6 + depth * 16;
 
   return (
     <>
       <Group
-        gap={2}
+        data-page-id={node.id}
+        draggable
+        gap={4}
         wrap="nowrap"
-        pl={4 + depth * 12}
-        pr={4}
+        pl={indent}
+        pr={6}
+        pos="relative"
         style={{
-          borderRadius: 4,
-          background: isSelected
-            ? 'var(--mantine-color-default-hover)'
-            : undefined,
+          borderRadius: 6,
+          background:
+            dropHere === 'inside'
+              ? 'var(--mantine-primary-color-light)'
+              : isSelected
+                ? 'var(--mantine-color-default-hover)'
+                : undefined,
+          opacity: rest.draggedId === node.id ? 0.5 : undefined,
         }}
       >
+        {(dropHere === 'before' || dropHere === 'after') && (
+          // Черта с отступом строки: видно, на какой уровень встанет страница.
+          <Box
+            pos="absolute"
+            left={indent}
+            right={6}
+            top={dropHere === 'before' ? 0 : undefined}
+            bottom={dropHere === 'after' ? 0 : undefined}
+            h={2}
+            bg="var(--mantine-primary-color-filled)"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
+
         {hasChildren ? (
           <ActionIcon
             variant="subtle"
             color="gray"
-            size={18}
+            size={20}
             onClick={() => onToggle(node.id)}
             aria-label={`${isOpen ? 'Свернуть' : 'Развернуть'}: ${node.title}`}
           >
             {isOpen ? (
-              <IconChevronDown size={13} />
+              <IconChevronDown size={14} />
             ) : (
-              <IconChevronRight size={13} />
+              <IconChevronRight size={14} />
             )}
           </ActionIcon>
         ) : (
           // Отступ вместо кнопки: скрытая кнопка осталась бы в дереве доступности.
-          <Box w={18} style={{ flexShrink: 0 }} />
+          <Box w={20} style={{ flexShrink: 0 }} />
         )}
 
         <UnstyledButton
           onClick={() => rest.onSelect(node.id)}
-          style={{ flex: 1, minWidth: 0, paddingBlock: 3, display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <PageGlyph icon={node.icon} />
-          <Text size="sm" truncate fw={isSelected ? 600 : 400} style={{ flex: 1, minWidth: 0 }}>
+          {/* Отступ у текста, а не у кнопки: Firefox не начинает перетаскивание с полей кнопки. */}
+          <Text size="md" truncate fw={isSelected ? 600 : 400} py={4} style={{ flex: 1, minWidth: 0 }}>
             {node.title || 'Без названия'}
           </Text>
         </UnstyledButton>
@@ -166,10 +276,10 @@ function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
             <ActionIcon
               variant="subtle"
               color="gray"
-              size={18}
+              size={20}
               aria-label={`Действия: ${node.title}`}
             >
-              <IconDots size={13} />
+              <IconDots size={14} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>

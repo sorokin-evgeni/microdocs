@@ -106,6 +106,29 @@ export function moveNode(
   return insertNode(without, newParentId, node);
 }
 
+/** Куда встаёт перетащенная страница относительно той, на которую её бросили. */
+export type DropPosition = 'before' | 'after' | 'inside';
+
+/**
+ * Ставит страницу перед другой, после неё или последней вложенной в неё.
+ * В своё поддерево нельзя (FR-9). Проверка во всех трёх случаях та же, что
+ * у переноса внутрь цели: если цель вне поддерева, то и её родитель вне его.
+ */
+export function placeNode(
+  tree: Tree,
+  id: PageId,
+  targetId: PageId,
+  position: DropPosition,
+): Tree {
+  if (position === 'inside') return moveNode(tree, id, targetId);
+  const node = findNode(tree, id);
+  if (!node || !canMove(tree, id, targetId)) {
+    throw new Error('Недопустимый перенос страницы');
+  }
+  const without = dropFrom(tree.roots, id);
+  return { ...tree, roots: insertBeside(without, targetId, node, position) };
+}
+
 /** Сдвигает страницу среди соседей: -1 вверх, +1 вниз. */
 export function shiftNode(tree: Tree, id: PageId, delta: -1 | 1): Tree {
   return { ...tree, roots: shiftIn(tree.roots, id, delta) };
@@ -148,6 +171,24 @@ function dropFrom(nodes: TreeNode[], id: PageId): TreeNode[] {
   return nodes
     .filter((n) => n.id !== id)
     .map((n) => ({ ...n, children: dropFrom(n.children, id) }));
+}
+
+function insertBeside(
+  nodes: TreeNode[],
+  targetId: PageId,
+  node: TreeNode,
+  position: 'before' | 'after',
+): TreeNode[] {
+  const index = nodes.findIndex((n) => n.id === targetId);
+  if (index === -1) {
+    return nodes.map((n) => ({
+      ...n,
+      children: insertBeside(n.children, targetId, node, position),
+    }));
+  }
+  const next = [...nodes];
+  next.splice(position === 'before' ? index : index + 1, 0, node);
+  return next;
 }
 
 function shiftIn(nodes: TreeNode[], id: PageId, delta: -1 | 1): TreeNode[] {

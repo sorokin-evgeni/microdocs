@@ -7,6 +7,7 @@ import {
   insertNode,
   makeNode,
   moveNode,
+  placeNode,
   removeNode,
   renameNode,
   setNodeIcon,
@@ -151,6 +152,45 @@ describe('перенос', () => {
 
   it('запрещает перенос под несуществующего родителя', () => {
     expect(canMove(fixture(), 'b', 'нет')).toBe(false);
+  });
+});
+
+describe('перетаскивание', () => {
+  it('ставит перед страницей на другом уровне', () => {
+    const tree = placeNode(fixture(), 'e', 'd', 'before');
+    expect(childIds(tree, 'a')).toEqual(['b', 'e', 'd']);
+    expect(titlesOfRoots(tree)).toEqual(['a']);
+  });
+
+  it('ставит после страницы', () => {
+    const tree = placeNode(fixture(), 'c', 'a', 'after');
+    expect(titlesOfRoots(tree)).toEqual(['a', 'c', 'e']);
+    expect(childIds(tree, 'b')).toEqual([]);
+  });
+
+  it('меняет порядок среди соседей', () => {
+    expect(titlesOfRoots(placeNode(fixture(), 'e', 'a', 'before'))).toEqual(['e', 'a']);
+    expect(childIds(placeNode(fixture(), 'b', 'd', 'after'), 'a')).toEqual(['d', 'b']);
+  });
+
+  it('вкладывает последней дочерней вместе с поддеревом', () => {
+    const tree = placeNode(fixture(), 'b', 'd', 'inside');
+    expect(childIds(tree, 'a')).toEqual(['d']);
+    expect(childIds(tree, 'd')).toEqual(['b']);
+    expect(childIds(tree, 'b')).toEqual(['c']);
+  });
+
+  it('запрещает класть в собственное поддерево и рядом с его страницами (FR-9)', () => {
+    expect(() => placeNode(fixture(), 'a', 'c', 'inside')).toThrow();
+    expect(() => placeNode(fixture(), 'a', 'c', 'before')).toThrow();
+    expect(() => placeNode(fixture(), 'a', 'a', 'after')).toThrow();
+  });
+
+  it('не мутирует исходное дерево', () => {
+    const original = fixture();
+    placeNode(original, 'e', 'b', 'before');
+    expect(titlesOfRoots(original)).toEqual(['a', 'e']);
+    expect(childIds(original, 'a')).toEqual(['b', 'd']);
   });
 });
 
