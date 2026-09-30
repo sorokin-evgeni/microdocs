@@ -36,6 +36,8 @@
   color: var(--doc-fg);
   font-family: var(--doc-font);
   font-feature-settings: 'cv11', 'ss03';
+  /* Подписи действий прячутся по ширине колонки, а не окна: её ужимает и список слева. */
+  container-type: inline-size;
 }
 
 @media (max-width: 560px) {
@@ -55,6 +57,17 @@
   font-weight: 650;
   line-height: 1.25;
   letter-spacing: -0.022em;
+}
+
+/* Действия в строке названия: на узкой колонке остаются одни иконки. */
+.page-action-label {
+  margin-inline-start: 5px;
+}
+
+@container (max-width: 520px) {
+  .page-action-label {
+    display: none;
+  }
 }
 
 .md-editor {

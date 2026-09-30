@@ -6,7 +6,6 @@ import {
   Group,
   ScrollArea,
   Text,
-  TextInput,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconPlus } from '@tabler/icons-react';
@@ -21,6 +20,7 @@ import { pageFromLocation, usePageUrl } from './state/usePageUrl';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
 import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
+import { PageHeader } from './components/PageHeader';
 import { Editor } from './components/Editor';
 import { findNode } from './domain/tree';
 import type { PageId } from './types';
@@ -159,15 +159,12 @@ export function App() {
       <AppShell.Main>
         {selected ? (
           <div className="page-column">
-            <TextInput
-              value={selected.title}
-              onChange={(event) =>
-                base.renamePage(selected.id, event.currentTarget.value)
-              }
-              placeholder="Без названия"
-              variant="unstyled"
-              classNames={{ input: 'page-title' }}
-              aria-label="Заголовок страницы"
+            <PageHeader
+              title={selected.title}
+              onRename={(title) => base.renamePage(selected.id, title)}
+              onCreateChild={() => void base.createPage(selected.id)}
+              onMove={() => setMovingId(selected.id)}
+              onDelete={() => handleDelete(selected.id)}
             />
             {page.body !== null && (
               <Editor
