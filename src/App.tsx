@@ -17,6 +17,7 @@ import { createOutbox } from './storage/outbox';
 import { createSyncingStore, type SyncState } from './storage/syncingStore';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
+import { pageFromLocation, usePageUrl } from './state/usePageUrl';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
 import { Editor } from './components/Editor';
@@ -50,7 +51,8 @@ export function App() {
     return () => window.removeEventListener('online', drain);
   }, [store]);
 
-  const base = useBase(store);
+  const base = useBase(store, pageFromLocation);
+  usePageUrl(base.tree, base.selectedId, base.select);
   const page = usePageBody(store, base.selectedId);
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
     useDisclosure(false);

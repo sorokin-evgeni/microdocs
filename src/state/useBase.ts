@@ -20,7 +20,10 @@ import {
  * успел бы отложить старое дерево и затереть им результат следующей структурной
  * операции. Структурные операции дописывают запись немедленно.
  */
-export function useBase(store: PageStore) {
+export function useBase(
+  store: PageStore,
+  pickInitial: (tree: Tree) => PageId | null = (tree) => tree.roots[0]?.id ?? null,
+) {
   const [tree, setTree] = useState<Tree | null>(null);
   const [selectedId, setSelectedId] = useState<PageId | null>(null);
 
@@ -39,7 +42,7 @@ export function useBase(store: PageStore) {
 
       if (loaded) {
         setTree(loaded);
-        setSelectedId(loaded.roots[0]?.id ?? null);
+        setSelectedId(pickInitial(loaded));
         return;
       }
 
@@ -50,7 +53,7 @@ export function useBase(store: PageStore) {
       );
       if (cancelled) return;
       setTree(fresh);
-      setSelectedId(fresh.roots[0]?.id ?? null);
+      setSelectedId(pickInitial(fresh));
     })();
 
     return () => {
