@@ -88,7 +88,9 @@ export function App() {
 
   return (
     <AppShell
-      header={{ height: 40 }}
+      // Полоса сверху только на телефоне: там список страниц спрятан, и нужна кнопка,
+      // чтобы его открыть. На компьютере страница начинается с самого верха.
+      header={{ height: { base: 40, sm: 0 } }}
       navbar={{
         width: navWidth,
         breakpoint: 'sm',
@@ -96,36 +98,23 @@ export function App() {
       }}
       padding={0}
     >
-      <AppShell.Header>
+      <AppShell.Header hiddenFrom="sm">
         <Group h="100%" px="sm" gap="sm">
-          <Burger
-            opened={navOpened}
-            onClick={toggleNav}
-            hiddenFrom="sm"
-            size="sm"
-            aria-label="Меню"
-          />
+          <Burger opened={navOpened} onClick={toggleNav} size="sm" aria-label="Меню" />
           <Text size="sm" fw={600}>
             microdocs
           </Text>
-          <Text
-            size="xs"
-            ml="auto"
-            c={
-              syncState === 'нет связи'
-                ? 'red'
-                : syncState === 'ожидает отправки'
-                  ? 'yellow'
-                  : 'dimmed'
-            }
-          >
-            {syncState}
-          </Text>
-          <ThemeToggle />
         </Group>
       </AppShell.Header>
 
       <AppShell.Navbar p={6}>
+        {/* Шапка списка страниц. На телефоне вместо неё полоса сверху. */}
+        <Group visibleFrom="sm" h={40} px={4} wrap="nowrap">
+          <Text size="sm" fw={600}>
+            microdocs
+          </Text>
+        </Group>
+
         <Group justify="space-between" px={4} pb={4} wrap="nowrap">
           <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
             Страницы
@@ -155,6 +144,22 @@ export function App() {
             />
           )}
         </ScrollArea>
+
+        <Group justify="space-between" px={4} pt={4} wrap="nowrap">
+          <Text
+            size="xs"
+            c={
+              syncState === 'нет связи'
+                ? 'red'
+                : syncState === 'ожидает отправки'
+                  ? 'yellow'
+                  : 'dimmed'
+            }
+          >
+            {syncState}
+          </Text>
+          <ThemeToggle />
+        </Group>
 
         <NavbarResizer onResize={setNavWidth} />
       </AppShell.Navbar>
