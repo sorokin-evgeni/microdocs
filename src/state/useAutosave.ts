@@ -7,6 +7,9 @@ export interface Autosave<T> {
   flush: () => void;
 }
 
+/** Сколько ждать тишины перед записью. */
+export const AUTOSAVE_DELAY = 600;
+
 /**
  * Откладывает запись, пока правки идут подряд (FR-16: кнопки «Сохранить» нет).
  *
@@ -15,7 +18,7 @@ export interface Autosave<T> {
  */
 export function useAutosave<T>(
   save: (key: string, value: T) => void,
-  delay = 600,
+  delay = AUTOSAVE_DELAY,
 ): Autosave<T> {
   const pending = useRef<{ key: string; value: T } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
