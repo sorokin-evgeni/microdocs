@@ -4,6 +4,7 @@ import {
   AppShell,
   Box,
   Burger,
+  Button,
   Group,
   ScrollArea,
   Text,
@@ -17,6 +18,7 @@ import { createOutbox } from './storage/outbox';
 import { createSyncingStore, type SyncState } from './storage/syncingStore';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
+import { useAppUpdate } from './state/useAppUpdate';
 import { pageFromLocation, usePageUrl } from './state/usePageUrl';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
@@ -63,6 +65,7 @@ export function App() {
     useDisclosure(false);
   const [movingId, setMovingId] = useState<PageId | null>(null);
   const [navWidth, setNavWidth] = useNavbarWidth();
+  const applyUpdate = useAppUpdate();
 
   const selected =
     base.tree && base.selectedId ? findNode(base.tree, base.selectedId) : null;
@@ -175,7 +178,14 @@ export function App() {
           >
             {syncState}
           </Text>
-          <ThemeToggle />
+          <Group gap={4} wrap="nowrap">
+            {applyUpdate && (
+              <Button size="compact-xs" variant="light" onClick={applyUpdate}>
+                Обновить
+              </Button>
+            )}
+            <ThemeToggle />
+          </Group>
         </Group>
 
         <NavbarResizer onResize={setNavWidth} />

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Лист из логотипа (сетка 32), увеличенный в 2,5 раза и поставленный в центр 108dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="2.5"
+        android:scaleY="2.5"
+        android:translateX="14"
+        android:translateY="14">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M11,6h6l6,6v12a2,2 0,0 1,-2 2H11a2,2 0,0 1,-2 -2V8a2,2 0,0 1,2 -2Z" />
+        <path
+            android:fillColor="#FFC5D0FF"
+            android:pathData="M17,6v4.5a1.5,1.5 0,0 0,1.5 1.5H23Z" />
+        <path
+            android:pathData="M12.5,17h7M12.5,21h4"
+            android:strokeWidth="2"
+            android:strokeColor="#FF4C6EF5"
+            android:strokeLineCap="round" />
+    </group>
+</vector>

@@ -36,10 +36,12 @@ export function createStaticHandler(rootDir: string) {
 
       res.statusCode = 200;
       res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
-      // Файлы сборки именованы с хешем, index.html — нет.
+      // С хешем в имени — только файлы сборки в assets/. Остальное (index.html,
+      // sw.js, public/) каждый раз сверяется с сервером, иначе браузер не увидит
+      // новую версию service worker.
       res.setHeader(
         'Cache-Control',
-        file.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable',
+        file.startsWith(join(root, 'assets') + sep) ? 'public, max-age=31536000, immutable' : 'no-cache',
       );
 
       if (req.method === 'HEAD') {

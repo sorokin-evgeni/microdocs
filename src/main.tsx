@@ -13,6 +13,11 @@ import { App } from './App';
 const container = document.getElementById('root');
 if (!container) throw new Error('Не найден элемент #root');
 
+// Без сети интерфейс открывается из кеша service worker (src/serviceWorker/sw.ts).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.register('/sw.js');
+}
+
 createRoot(container).render(
   <StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="auto">

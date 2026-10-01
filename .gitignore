@@ -12,3 +12,7 @@ build/
 .idea/
 coverage/
 *.local
+dist-native/
+!desktop/build/
+.gradle/
+local.properties
