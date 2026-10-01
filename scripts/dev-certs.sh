@@ -5,7 +5,7 @@
 #   client.p12              — клиентский сертификат для браузера (пароль: microdocs)
 #
 # К боевому серверу этот набор отношения не имеет: там серверный сертификат
-# от Let's Encrypt, а клиентские выпускает scripts/client-cert.sh.
+# от Let's Encrypt и свой центр для клиентских (docs/DEPLOY.md).
 set -euo pipefail
 
 DIR="${1:-.secrets/dev-certs}"
