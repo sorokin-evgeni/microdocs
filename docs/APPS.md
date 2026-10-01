@@ -69,7 +69,7 @@ APK встаёт поверх старого, только если подпис
 scripts/android-keystore.sh
 ```
 
-Скрипт кладёт ключ в `.secrets/android/`. Если стоит `gh` с входом в GitHub,
+Ему тоже нужен JDK (`keytool`). Скрипт кладёт ключ в `.secrets/android/`. Если стоит `gh` с входом в GitHub,
 он сам записывает секреты `ANDROID_KEYSTORE_BASE64` и `ANDROID_KEYSTORE_PASSWORD`
 для сборки релизов; иначе печатает, что вставить в Settings → Secrets and
 variables → Actions. **Ключ нужно сохранить**: без него обновление не

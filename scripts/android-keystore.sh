@@ -12,6 +12,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# На маке /usr/bin/keytool — заглушка, без JDK она только ругается.
+if ! keytool -help >/dev/null 2>&1; then
+  echo "Нужен JDK (из него keytool). На маке: brew install --cask temurin" >&2
+  exit 1
+fi
+
 DIR=.secrets/android
 if [[ -f $DIR/release.p12 ]]; then
   echo "Ключ уже есть: $DIR/release.p12 — второй не нужен." >&2
