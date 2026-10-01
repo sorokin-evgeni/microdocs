@@ -71,19 +71,24 @@ desktop/        приложение для Mac (Electron)
 Сервер сам терминирует TLS и пускает только тех, чей клиентский сертификат подписан
 доверенным центром. Nginx не нужен.
 
+Проверить на своей машине:
+
 ```bash
-npm run certs:dev          # самоподписанный набор для локальной проверки
+npm run certs:dev          # учебный набор в .secrets/dev-certs/
 npm run build              # клиент в dist/, сервер в dist-server/
 
-MICRODOCS_TLS_KEY=.secrets/certs/server.key \
-MICRODOCS_TLS_CERT=.secrets/certs/server.pem \
-MICRODOCS_CLIENT_CA=.secrets/certs/ca.pem \
+MICRODOCS_TLS_KEY=.secrets/dev-certs/server.key \
+MICRODOCS_TLS_CERT=.secrets/dev-certs/server.pem \
+MICRODOCS_CLIENT_CA=.secrets/dev-certs/ca.pem \
 PORT=8443 npm start
 ```
 
-`client.p12` из `.secrets/certs/` устанавливается в систему (пароль `microdocs`),
+`client.p12` из `.secrets/dev-certs/` устанавливается в систему (пароль `microdocs`),
 после чего браузер предложит его при заходе. Без сертификата соединение обрывается
 на рукопожатии.
+
+Боевые клиентские сертификаты выпускает `scripts/client-cert.sh` — по одному
+на устройство, см. [docs/DEPLOY.md](docs/DEPLOY.md#клиентские-сертификаты).
 
 **Владелец определяется по CN клиентского сертификата** — он же имя базы в хранилище.
 В запросах база не называется, попросить чужую нельзя. Отсюда же берётся

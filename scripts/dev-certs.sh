@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Выпускает самоподписанный набор сертификатов для локальной проверки mTLS:
-#   ca.pem / ca.key        — свой удостоверяющий центр
+# Выпускает набор для проверки mTLS на своей машине, в .secrets/dev-certs/:
+#   ca.pem / ca.key         — учебный центр «microdocs dev CA»
 #   server.pem / server.key — сертификат сервера на localhost
 #   client.p12              — клиентский сертификат для браузера (пароль: microdocs)
 #
-# Боевые сертификаты выпускаются иначе: серверный — через Let's Encrypt,
-# клиентские — этим же центром, но храните ca.key в надёжном месте.
+# К боевому серверу этот набор отношения не имеет: там серверный сертификат
+# от Let's Encrypt, а клиентские выпускает scripts/client-cert.sh.
 set -euo pipefail
 
-DIR="${1:-.secrets/certs}"
+DIR="${1:-.secrets/dev-certs}"
 CN="${MICRODOCS_CLIENT_CN:-evgeny}"
 mkdir -p "$DIR"
 cd "$DIR"
 
 echo "== удостоверяющий центр =="
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-  -keyout ca.key -out ca.pem -subj "/CN=microdocs-ca"
+  -keyout ca.key -out ca.pem -subj "/CN=microdocs dev CA"
 
 echo "== сертификат сервера =="
 openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr \
@@ -35,7 +35,7 @@ openssl pkcs12 -export -legacy -out client.p12 -inkey client.key -in client.pem 
   -certfile ca.pem -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
   -passout pass:microdocs
 
-rm -f server.csr client.csr
+rm -f server.csr client.csr ca.srl
 echo
 echo "Готово: $(pwd)"
 echo "client.p12 установить в систему, пароль microdocs"
