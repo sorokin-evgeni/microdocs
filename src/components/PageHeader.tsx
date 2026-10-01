@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Button, Group, TextInput } from '@mantine/core';
-import { IconArchive, IconArrowsMove, IconPlus, IconTrash } from '@tabler/icons-react';
+import { ActionIcon, Button, Group, Menu, TextInput } from '@mantine/core';
+import { IconArchive, IconArrowsMove, IconDots, IconPlus, IconTrash } from '@tabler/icons-react';
 import { PageIconPicker } from './PageIconPicker';
 
 interface Props {
@@ -15,8 +15,9 @@ interface Props {
 }
 
 /**
- * Иконка над названием, название страницы и действия над ней. Те же действия
- * есть в меню строки дерева, здесь они всегда на виду.
+ * Иконка над названием, название страницы и действия над ней. На виду —
+ * частые («Вложенная», «В архив»), остальные — в меню за троеточием,
+ * чтобы длинному названию хватало места.
  */
 export function PageHeader(props: Props) {
   return (
@@ -39,14 +40,28 @@ export function PageHeader(props: Props) {
             name="Добавить вложенную"
             onClick={props.onCreateChild}
           />
-          <Action icon={<IconArrowsMove size={15} />} label="Переместить" onClick={props.onMove} />
           <Action
             icon={<IconArchive size={15} />}
             label="В архив"
             name="Архивировать"
             onClick={props.onArchive}
           />
-          <Action icon={<IconTrash size={15} />} label="Удалить" onClick={props.onDelete} />
+          <Menu position="bottom-end" withinPortal>
+            <Menu.Target>
+              <ActionIcon variant="subtle" color="gray" c="dimmed" size={26} aria-label="Ещё действия">
+                <IconDots size={15} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconArrowsMove size={13} />} onClick={props.onMove}>
+                Переместить…
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item color="red" leftSection={<IconTrash size={13} />} onClick={props.onDelete}>
+                Удалить
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Group>
       </Group>
     </div>

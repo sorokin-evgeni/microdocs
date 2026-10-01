@@ -23,26 +23,37 @@ function setup(icon?: string) {
 }
 
 describe('PageHeader', () => {
-  it('действия видны сразу, без меню', () => {
+  it('на виду — «Вложенная» и «В архив», остальное в меню', () => {
     setup();
-    for (const name of ['Добавить вложенную', 'Переместить', 'Архивировать', 'Удалить']) {
+    for (const name of ['Добавить вложенную', 'Архивировать', 'Ещё действия']) {
       expect(screen.getByRole('button', { name })).toBeVisible();
     }
+    expect(screen.queryByRole('button', { name: 'Переместить' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Удалить' })).not.toBeInTheDocument();
   });
 
-  it('каждая кнопка вызывает своё действие', async () => {
+  it('кнопки на виду вызывают свои действия', async () => {
     const user = userEvent.setup();
     const handlers = setup();
 
     await user.click(screen.getByRole('button', { name: 'Добавить вложенную' }));
-    await user.click(screen.getByRole('button', { name: 'Переместить' }));
     await user.click(screen.getByRole('button', { name: 'Архивировать' }));
-    await user.click(screen.getByRole('button', { name: 'Удалить' }));
 
     expect(handlers.onCreateChild).toHaveBeenCalledTimes(1);
-    expect(handlers.onMove).toHaveBeenCalledTimes(1);
     expect(handlers.onArchive).toHaveBeenCalledTimes(1);
-    expect(handlers.onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['Переместить…', 'onMove'],
+    ['Удалить', 'onDelete'],
+  ] as const)('«%s» — из меню за троеточием', async (item, handler) => {
+    const user = userEvent.setup();
+    const handlers = setup();
+
+    await user.click(screen.getByRole('button', { name: 'Ещё действия' }));
+    await user.click(await screen.findByRole('menuitem', { name: item }));
+
+    expect(handlers[handler]).toHaveBeenCalledTimes(1);
   });
 
   it('правка названия уходит наверх', async () => {
