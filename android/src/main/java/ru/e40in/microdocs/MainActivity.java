@@ -33,6 +33,11 @@ public class MainActivity extends Activity {
     private View errorView;
     private TextView errorTitle;
     private TextView errorText;
+    private TextView errorDetail;
+    /** Адрес, который не открылся, — его и повторяем. */
+    private String failedUrl;
+    /** Что было с сертификатом в последней попытке — для экрана ошибки. */
+    private volatile String certNote = "";
 
     @Override
     protected void onCreate(Bundle state) {
@@ -43,6 +48,7 @@ public class MainActivity extends Activity {
         errorView = findViewById(R.id.error);
         errorTitle = findViewById(R.id.error_title);
         errorText = findViewById(R.id.error_text);
+        errorDetail = findViewById(R.id.error_detail);
         findViewById(R.id.retry).setOnClickListener(v -> retry());
 
         WebSettings settings = web.getSettings();
@@ -69,16 +75,19 @@ public class MainActivity extends Activity {
         else super.onBackPressed();
     }
 
-    private void showError(int title, int text) {
+    private void showError(int title, int text, String detail) {
         errorTitle.setText(title);
         errorText.setText(text);
+        errorDetail.setText(detail);
         errorView.setVisibility(View.VISIBLE);
     }
 
     private void retry() {
         errorView.setVisibility(View.GONE);
+        certNote = "";
         // Отказ от выбора сертификата WebView помнит до перезапуска — забываем его.
-        WebView.clearClientCertPreferences(() -> web.reload());
+        String url = failedUrl != null ? failedUrl : BuildConfig.APP_URL;
+        WebView.clearClientCertPreferences(() -> web.loadUrl(url));
     }
 
     private SharedPreferences prefs() {
@@ -101,6 +110,7 @@ public class MainActivity extends Activity {
             // Системный выбор; в списке только сертификаты центра, который назвал сервер.
             KeyChain.choosePrivateKeyAlias(MainActivity.this, alias -> {
                 if (alias == null) {
+                    certNote = getString(R.string.cert_not_chosen);
                     request.cancel();
                     return;
                 }
@@ -116,12 +126,14 @@ public class MainActivity extends Activity {
                     PrivateKey key = KeyChain.getPrivateKey(MainActivity.this, alias);
                     X509Certificate[] chain = KeyChain.getCertificateChain(MainActivity.this, alias);
                     if (key != null && chain != null) {
+                        certNote = getString(R.string.cert_sent, alias);
                         request.proceed(key, chain);
                         return;
                     }
                 } catch (Exception ignored) {
                     // Сертификат удалили или отозвали доступ — ниже спросим заново.
                 }
+                certNote = getString(R.string.cert_unavailable, alias);
                 prefs().edit().remove(CERT_ALIAS).apply();
                 request.cancel();
             }).start();
@@ -130,11 +142,16 @@ public class MainActivity extends Activity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (!request.isForMainFrame()) return;
+            failedUrl = request.getUrl().toString();
+            String description = error.getDescription().toString();
             // Если интерфейс уже в кеше service worker, без сети сюда не попадаем.
             if (error.getErrorCode() == ERROR_FAILED_SSL_HANDSHAKE) {
-                showError(R.string.error_cert_title, R.string.error_cert_text);
+                // Сервер не принял сертификат — не подставлять его снова, а спросить заново.
+                prefs().edit().remove(CERT_ALIAS).apply();
+                String detail = certNote.isEmpty() ? description : certNote + "\n" + description;
+                showError(R.string.error_cert_title, R.string.error_cert_text, detail);
             } else {
-                showError(R.string.error_offline_title, R.string.error_offline_text);
+                showError(R.string.error_offline_title, R.string.error_offline_text, description);
             }
         }
     }
