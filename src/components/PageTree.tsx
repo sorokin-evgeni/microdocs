@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { ActionIcon, Box, Group, Menu, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import {
@@ -111,7 +111,28 @@ export function PageTree(props: Props) {
     endDrag();
   };
 
-  // Строки идут одним плоским списком (Row отдаёт фрагменты), так что зазор — между всеми.
+  // Обработчики родителя пересоздаются на каждой отрисовке. Строкам отдаём
+  // один постоянный набор, который зовёт свежие, — иначе memo строк бесполезен.
+  const latest = useRef({ props, toggle });
+  latest.current = { props, toggle };
+  const actions = useMemo<RowActions>(
+    () => ({
+      select: (id) => latest.current.props.onSelect(id),
+      toggle: (id) => latest.current.toggle(id),
+      createChild: (id) => latest.current.props.onCreateChild(id),
+      shift: (id, delta) => latest.current.props.onShift(id, delta),
+      moveRequest: (id) => latest.current.props.onMoveRequest(id),
+      archive: (id) => latest.current.props.onArchive(id),
+      remove: (id) => latest.current.props.onDelete(id),
+    }),
+    [],
+  );
+
+  const rows = useMemo(() => visibleRows(props.tree.roots, collapsed), [props.tree, collapsed]);
+
+  // Строки идут одним плоским списком, так что зазор — между всеми. Каждая
+  // получает свои признаки (выбрана, цель переноса), а не общее состояние:
+  // при выборе страницы перерисовываются две строки, а не всё дерево.
   return (
     <Stack
       gap={2}
@@ -121,20 +142,28 @@ export function PageTree(props: Props) {
       onDrop={onDrop}
       onDragEnd={endDrag}
     >
-      {props.tree.roots.map((node) => (
+      {rows.map(({ node, depth }) => (
         <Row
           key={node.id}
           node={node}
-          depth={0}
-          collapsed={collapsed}
-          onToggle={toggle}
-          draggedId={draggedId}
-          drop={drop}
-          {...props}
+          depth={depth}
+          isOpen={!collapsed.has(node.id)}
+          selected={props.selectedId === node.id}
+          dragged={draggedId === node.id}
+          dropHere={drop?.id === node.id ? drop.position : null}
+          actions={actions}
         />
       ))}
     </Stack>
   );
+}
+
+/** Видимые строки по порядку: свёрнутые ветки без детей. */
+function visibleRows(nodes: TreeNode[], collapsed: Set<PageId>, depth = 0): { node: TreeNode; depth: number }[] {
+  return nodes.flatMap((node) => [
+    { node, depth },
+    ...(collapsed.has(node.id) ? [] : visibleRows(node.children, collapsed, depth + 1)),
+  ]);
 }
 
 function rowOf(target: EventTarget): HTMLElement | null {
@@ -163,13 +192,24 @@ function parseIds(raw: string | undefined): PageId[] {
   }
 }
 
-interface RowProps extends Props {
+interface RowActions {
+  select: (id: PageId) => void;
+  toggle: (id: PageId) => void;
+  createChild: (id: PageId) => void;
+  shift: (id: PageId, delta: -1 | 1) => void;
+  moveRequest: (id: PageId) => void;
+  archive: (id: PageId) => void;
+  remove: (id: PageId) => void;
+}
+
+interface RowProps {
   node: TreeNode;
   depth: number;
-  collapsed: Set<PageId>;
-  onToggle: (id: PageId) => void;
-  draggedId: PageId | null;
-  drop: DropTarget | null;
+  isOpen: boolean;
+  selected: boolean;
+  dragged: boolean;
+  dropHere: DropPosition | null;
+  actions: RowActions;
 }
 
 /**
@@ -201,140 +241,116 @@ export function PageGlyph({ icon }: { icon: string | undefined }) {
   );
 }
 
-function Row({ node, depth, collapsed, onToggle, ...rest }: RowProps) {
+const Row = memo(function Row({ node, depth, isOpen, selected, dragged, dropHere, actions }: RowProps) {
   const hasChildren = node.children.length > 0;
-  const isOpen = !collapsed.has(node.id);
-  const isSelected = rest.selectedId === node.id;
-  const dropHere = rest.drop?.id === node.id ? rest.drop.position : null;
   const indent = 6 + depth * 16;
 
   return (
-    <>
-      <Group
-        data-page-id={node.id}
-        draggable
-        gap={4}
-        wrap="nowrap"
-        pl={indent}
-        pr={6}
-        pos="relative"
-        style={{
-          borderRadius: 6,
-          background:
-            dropHere === 'inside'
-              ? 'var(--mantine-primary-color-light)'
-              : isSelected
-                ? 'var(--mantine-color-default-hover)'
-                : undefined,
-          opacity: rest.draggedId === node.id ? 0.5 : undefined,
-        }}
-      >
-        {(dropHere === 'before' || dropHere === 'after') && (
-          // Черта с отступом строки: видно, на какой уровень встанет страница.
-          <Box
-            pos="absolute"
-            left={indent}
-            right={6}
-            top={dropHere === 'before' ? 0 : undefined}
-            bottom={dropHere === 'after' ? 0 : undefined}
-            h={2}
-            bg="var(--mantine-primary-color-filled)"
-            style={{ pointerEvents: 'none' }}
-          />
-        )}
+    <Group
+      data-page-id={node.id}
+      draggable
+      gap={4}
+      wrap="nowrap"
+      pl={indent}
+      pr={6}
+      pos="relative"
+      style={{
+        borderRadius: 6,
+        background:
+          dropHere === 'inside'
+            ? 'var(--mantine-primary-color-light)'
+            : selected
+              ? 'var(--mantine-color-default-hover)'
+              : undefined,
+        opacity: dragged ? 0.5 : undefined,
+      }}
+    >
+      {(dropHere === 'before' || dropHere === 'after') && (
+        // Черта с отступом строки: видно, на какой уровень встанет страница.
+        <Box
+          pos="absolute"
+          left={indent}
+          right={6}
+          top={dropHere === 'before' ? 0 : undefined}
+          bottom={dropHere === 'after' ? 0 : undefined}
+          h={2}
+          bg="var(--mantine-primary-color-filled)"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
 
-        {hasChildren ? (
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size={20}
-            onClick={() => onToggle(node.id)}
-            aria-label={`${isOpen ? 'Свернуть' : 'Развернуть'}: ${node.title}`}
-          >
-            {isOpen ? (
-              <IconChevronDown size={14} />
-            ) : (
-              <IconChevronRight size={14} />
-            )}
-          </ActionIcon>
-        ) : (
-          // Отступ вместо кнопки: скрытая кнопка осталась бы в дереве доступности.
-          <Box w={20} style={{ flexShrink: 0 }} />
-        )}
-
-        <UnstyledButton
-          onClick={() => rest.onSelect(node.id)}
-          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+      {hasChildren ? (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size={20}
+          onClick={() => actions.toggle(node.id)}
+          aria-label={`${isOpen ? 'Свернуть' : 'Развернуть'}: ${node.title}`}
         >
-          <PageGlyph icon={node.icon} />
-          {/* Отступ у текста, а не у кнопки: Firefox не начинает перетаскивание с полей кнопки. */}
-          <Text size="md" truncate fw={isSelected ? 600 : 400} py={4} style={{ flex: 1, minWidth: 0 }}>
-            {node.title || 'Без названия'}
-          </Text>
-        </UnstyledButton>
+          {isOpen ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+        </ActionIcon>
+      ) : (
+        // Отступ вместо кнопки: скрытая кнопка осталась бы в дереве доступности.
+        <Box w={20} style={{ flexShrink: 0 }} />
+      )}
 
-        <Menu position="bottom-end" withinPortal>
-          <Menu.Target>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size={20}
-              aria-label={`Действия: ${node.title}`}
-            >
-              <IconDots size={14} />
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item
-              leftSection={<IconPlus size={13} />}
-              onClick={() => rest.onCreateChild(node.id)}
-            >
-              Добавить вложенную
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconArrowUp size={13} />}
-              onClick={() => rest.onShift(node.id, -1)}
-            >
-              Выше
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconArrowDown size={13} />}
-              onClick={() => rest.onShift(node.id, 1)}
-            >
-              Ниже
-            </Menu.Item>
-            <Menu.Item onClick={() => rest.onMoveRequest(node.id)}>
-              Переместить…
-            </Menu.Item>
-            <Menu.Item
-              leftSection={<IconArchive size={13} />}
-              onClick={() => rest.onArchive(node.id)}
-            >
-              Архивировать
-            </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item
-              color="red"
-              leftSection={<IconTrash size={13} />}
-              onClick={() => rest.onDelete(node.id)}
-            >
-              Удалить
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </Group>
+      <UnstyledButton
+        onClick={() => actions.select(node.id)}
+        style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+      >
+        <PageGlyph icon={node.icon} />
+        {/* Отступ у текста, а не у кнопки: Firefox не начинает перетаскивание с полей кнопки. */}
+        <Text size="md" truncate fw={selected ? 600 : 400} py={4} style={{ flex: 1, minWidth: 0 }}>
+          {node.title || 'Без названия'}
+        </Text>
+      </UnstyledButton>
 
-      {isOpen &&
-        node.children.map((child) => (
-          <Row
-            key={child.id}
-            node={child}
-            depth={depth + 1}
-            collapsed={collapsed}
-            onToggle={onToggle}
-            {...rest}
-          />
-        ))}
-    </>
+      <RowMenu node={node} actions={actions} />
+    </Group>
+  );
+});
+
+/**
+ * Меню действий строки. Пока закрыто — просто кнопка: меню на каждой из
+ * сотен строк заранее делало бы запуск и любую перерисовку дерева тяжелее.
+ */
+function RowMenu({ node, actions }: { node: TreeNode; actions: RowActions }) {
+  const [opened, setOpened] = useState(false);
+  const trigger = (
+    <ActionIcon
+      variant="subtle"
+      color="gray"
+      size={20}
+      aria-label={`Действия: ${node.title}`}
+      onClick={opened ? undefined : () => setOpened(true)}
+    >
+      <IconDots size={14} />
+    </ActionIcon>
+  );
+  if (!opened) return trigger;
+
+  return (
+    <Menu position="bottom-end" withinPortal opened onChange={setOpened}>
+      <Menu.Target>{trigger}</Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item leftSection={<IconPlus size={13} />} onClick={() => actions.createChild(node.id)}>
+          Добавить вложенную
+        </Menu.Item>
+        <Menu.Item leftSection={<IconArrowUp size={13} />} onClick={() => actions.shift(node.id, -1)}>
+          Выше
+        </Menu.Item>
+        <Menu.Item leftSection={<IconArrowDown size={13} />} onClick={() => actions.shift(node.id, 1)}>
+          Ниже
+        </Menu.Item>
+        <Menu.Item onClick={() => actions.moveRequest(node.id)}>Переместить…</Menu.Item>
+        <Menu.Item leftSection={<IconArchive size={13} />} onClick={() => actions.archive(node.id)}>
+          Архивировать
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item color="red" leftSection={<IconTrash size={13} />} onClick={() => actions.remove(node.id)}>
+          Удалить
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
