@@ -2,9 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import type { PageId } from '../types';
 import type { SyncingStore } from '../storage/syncingStore';
 import { merge3 } from '../domain/merge';
+import { linkedPageIds } from '../domain/links';
 import { useAutosave } from './useAutosave';
 
-type BodyStore = Pick<SyncingStore, 'openPage' | 'saveBody' | 'subscribe' | 'refreshPage'>;
+type BodyStore = Pick<
+  SyncingStore,
+  'openPage' | 'saveBody' | 'subscribe' | 'refreshPage' | 'prefetchPages'
+>;
 
 /**
  * Сверка с сервером обычно укладывается в доли секунды; индикатор
@@ -20,6 +24,7 @@ export const REFRESHING_AFTER = 400;
  * Открывается мгновенно: если копия на устройстве есть, она показывается
  * сразу, а сверка с сервером идёт следом. Пока сверка тянется дольше
  * REFRESHING_AFTER, `refreshing` — повод показать «Обновляется…».
+ * Следом в фоне скачиваются страницы, на которые открытая ссылается.
  *
  * Страница может поменяться и не из редактора: пришла новее с сервера или
  * слилась с чужой правкой. Тогда растёт `revision` — редактор по нему
@@ -37,7 +42,7 @@ export function usePageBody(store: BodyStore, pageId: PageId | null) {
       const slow = setTimeout(() => {
         if (isCurrent()) setRefreshing(true);
       }, REFRESHING_AFTER);
-      void store.refreshPage(id).finally(() => {
+      return store.refreshPage(id).finally(() => {
         clearTimeout(slow);
         if (isCurrent()) setRefreshing(false);
       });
@@ -71,7 +76,12 @@ export function usePageBody(store: BodyStore, pageId: PageId | null) {
       if (cancelled) return;
       setRefreshing(false);
       setBody(text);
-      if (stale) revalidate(pageId, () => !cancelled);
+      // Сначала — сверка открытой страницы, потом в фоне те, на которые она
+      // ссылается: по ссылке перейдут скорее всего, пусть откроются сразу.
+      const checked = stale ? revalidate(pageId, () => !cancelled) : Promise.resolve();
+      void checked
+        .then(() => store.openPage(pageId))
+        .then(({ body: current }) => store.prefetchPages(linkedPageIds(current)));
     });
 
     return () => {
@@ -97,6 +107,8 @@ export function usePageBody(store: BodyStore, pageId: PageId | null) {
       setBody(next);
       setRevision((r) => r + 1);
       if (next !== change.after) schedule(pageId, next);
+      // В пришедшем тексте могли появиться новые ссылки.
+      void store.prefetchPages(linkedPageIds(next));
     });
   }, [store, pageId, pending, discard, schedule]);
 
@@ -105,7 +117,7 @@ export function usePageBody(store: BodyStore, pageId: PageId | null) {
     if (!pageId) return;
     let current = true;
     const refresh = () => {
-      if (document.visibilityState === 'visible') revalidate(pageId, () => current);
+      if (document.visibilityState === 'visible') void revalidate(pageId, () => current);
     };
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('online', refresh);

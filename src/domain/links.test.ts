@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assetLinkFromUrl, assetUrl, parseLink } from './links';
+import { assetLinkFromUrl, assetUrl, linkedPageIds, parseLink } from './links';
 
 describe('ссылки', () => {
   it('различает страницу, вложение и внешний адрес', () => {
@@ -36,5 +36,20 @@ describe('ссылки', () => {
   it('чужой адрес вложением не становится', () => {
     expect(assetLinkFromUrl('https://example.com/api/assets/a.png')).toBeNull();
     expect(assetLinkFromUrl('/api/tree')).toBeNull();
+  });
+});
+
+describe('страницы, на которые ссылается текст', () => {
+  it('по порядку, без повторов, без вложений и внешних ссылок', () => {
+    const текст = [
+      '[a](microdocs:page/aaa) и [b](microdocs:page/bbb-1)',
+      '![картинка](microdocs:asset/x/y.png) [сайт](https://example.com)',
+      'снова [a](microdocs:page/aaa)',
+    ].join('\n');
+    expect(linkedPageIds(текст)).toEqual(['aaa', 'bbb-1']);
+  });
+
+  it('ссылок нет — пусто', () => {
+    expect(linkedPageIds('просто текст')).toEqual([]);
   });
 });

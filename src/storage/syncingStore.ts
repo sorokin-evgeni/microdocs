@@ -21,6 +21,12 @@ export interface SyncingStore extends PageStore {
    * с сервером (refreshPage). Копии нет — ждём сервер, как раньше.
    */
   openPage: (id: PageId) => Promise<{ body: string; revalidate: boolean }>;
+  /**
+   * Скачать в фоне страницы, которых на устройстве ещё нет, — чтобы потом
+   * открылись мгновенно. По одной, не больше PREFETCH_LIMIT за раз; уже
+   * скачанные не трогает, сбой сети молча прекращает.
+   */
+  prefetchPages: (ids: PageId[]) => Promise<void>;
   /** Сверить страницу с сервером: вдруг её правили на другом устройстве. */
   refreshPage: (id: PageId) => Promise<void>;
   /** Страница поменялась не из редактора: пришла с сервера или слилась. */
@@ -83,6 +89,9 @@ export class BaseUnavailableError extends Error {
     this.name = 'BaseUnavailableError';
   }
 }
+
+/** Больше стольких страниц за раз в фоне не скачиваем: оглавление на сотню ссылок — не повод. */
+export const PREFETCH_LIMIT = 30;
 
 /** Сколько раз подряд пробовать отправить страницу, если сервер её обгоняет. */
 const PUSH_ATTEMPTS = 3;
@@ -336,6 +345,9 @@ export function createSyncingStore({
     scheduleDrain();
   }
 
+  /** Страницы, которые сейчас качаются в фоне: два захода за одной не нужны. */
+  const prefetching = new Set<PageId>();
+
   const store: SyncingStore = {
     async loadTree() {
       // Есть неотправленное — локальное свежее, с сервера тянуть нельзя.
@@ -462,6 +474,29 @@ export function createSyncingStore({
       // Копия с сервера уже была (или осталась от версии без номеров) — её и показываем.
       if (base || body) return { body, revalidate: true };
       return { body: await store.loadBody(id), revalidate: false };
+    },
+
+    async prefetchPages(ids) {
+      let fetched = 0;
+      for (const id of ids) {
+        if (fetched >= PREFETCH_LIMIT) return;
+        if (prefetching.has(id) || outbox.list().includes(`page:${id}`)) continue;
+        if ((await local.loadBase(id)) || (await local.loadBody(id))) continue;
+        prefetching.add(id);
+        fetched++;
+        try {
+          const page = await remote.fetchPage(id, null);
+          // Пока качали, страницу могли открыть и начать править — тогда не трогаем.
+          if (page.kind === 'found' && !outbox.list().includes(`page:${id}`) && !(await local.loadBase(id))) {
+            await local.saveBody(id, page.body);
+            await local.saveBase(id, { rev: page.rev, text: page.body });
+          }
+        } catch {
+          return; // Нет сети — в другой раз.
+        } finally {
+          prefetching.delete(id);
+        }
+      }
     },
 
     async saveBody(id, body) {

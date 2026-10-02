@@ -9,6 +9,7 @@ function fakeStore(initial: string, { cached = true } = {}) {
     openPage: vi.fn(() => Promise.resolve({ body: initial, revalidate: cached })),
     saveBody: vi.fn(() => Promise.resolve()),
     refreshPage: vi.fn(() => Promise.resolve()),
+    prefetchPages: vi.fn((_ids: string[]) => Promise.resolve()),
     subscribe: (listener: (change: PageChange) => void) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -108,5 +109,27 @@ describe('открытие из копии на устройстве', () => {
     const store = fakeStore(было, { cached: false });
     await open(store);
     expect(store.refreshPage).not.toHaveBeenCalled();
+  });
+});
+
+describe('фоновая закачка страниц по ссылкам', () => {
+  it('после сверки качаются страницы, на которые ссылается открытая', async () => {
+    const текст = 'См. [план](microdocs:page/aaa) и [итоги](microdocs:page/bbb), ещё раз [план](microdocs:page/aaa).';
+    const store = fakeStore(текст);
+    renderHook(() => usePageBody(store, 'p1'));
+    await waitFor(() => expect(store.prefetchPages).toHaveBeenCalledWith(['aaa', 'bbb']));
+    expect(store.refreshPage.mock.invocationCallOrder[0]).toBeLessThan(
+      store.prefetchPages.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('новые ссылки в тексте, пришедшем извне, тоже качаются', async () => {
+    const store = fakeStore(было);
+    await open(store);
+    store.prefetchPages.mockClear();
+    act(() =>
+      store.emit({ id: 'p1', before: было, after: `${было}\n\n[новая](microdocs:page/ccc)`, conflict: false }),
+    );
+    expect(store.prefetchPages).toHaveBeenCalledWith(['ccc']);
   });
 });

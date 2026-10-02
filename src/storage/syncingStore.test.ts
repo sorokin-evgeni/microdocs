@@ -6,6 +6,7 @@ import { createOutbox } from './outbox';
 import {
   BaseUnavailableError,
   createSyncingStore,
+  PREFETCH_LIMIT,
   type PageChange,
   type SyncState,
   type SyncTiming,
@@ -634,6 +635,52 @@ describe('синхронизация с сервером', () => {
 
       expect(await store.loadTree()).toEqual(дерево('Было'));
       await vi.waitFor(() => expect(trees).toEqual([дерево('Стало')]));
+    });
+  });
+
+  describe('фоновая закачка', () => {
+    it('качает только то, чего на устройстве нет', async () => {
+      const { remote, local, store } = setup();
+      remote.writeFromElsewhere('есть', 'уже скачана');
+      remote.writeFromElsewhere('нет', 'с сервера');
+      await store.loadBody('есть');
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+
+      await store.prefetchPages(['есть', 'нет', 'пропала']);
+      expect(fetch.mock.calls.map(([id]) => id)).toEqual(['нет', 'пропала']);
+      expect(local.peek().bodies.get('нет')).toBe('с сервера');
+      expect(local.peek().bases.get('нет')).toEqual({ rev: 1, text: 'с сервера' });
+      // Скачанная открывается без сети.
+      remote.state.offline = true;
+      expect(await store.openPage('нет')).toEqual({ body: 'с сервера', revalidate: true });
+    });
+
+    it('неотправленную правку не трогает', async () => {
+      const { remote, local, store } = setup();
+      remote.writeFromElsewhere('p1', 'с сервера');
+      remote.state.offline = true;
+      await store.saveBody('p1', 'моё');
+      remote.state.offline = false;
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+      await store.prefetchPages(['p1']);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(local.peek().bodies.get('p1')).toBe('моё');
+    });
+
+    it('без сети прекращает молча', async () => {
+      const { remote, store, states } = setup();
+      remote.state.offline = true;
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+      await store.prefetchPages(['a', 'b', 'c']);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(states).not.toContain('нет связи');
+    });
+
+    it('за раз не больше PREFETCH_LIMIT', async () => {
+      const { remote, store } = setup();
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+      await store.prefetchPages(Array.from({ length: PREFETCH_LIMIT + 10 }, (_, i) => `p${i}`));
+      expect(fetch).toHaveBeenCalledTimes(PREFETCH_LIMIT);
     });
   });
 });

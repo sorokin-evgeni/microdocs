@@ -23,6 +23,13 @@ export function parseLink(href: string): LinkTarget {
   return { kind: 'external', href };
 }
 
+/** Страницы, на которые ссылается текст, по порядку и без повторов. */
+export function linkedPageIds(markdown: string): PageId[] {
+  const ids = new Set<PageId>();
+  for (const match of markdown.matchAll(/microdocs:page\/([A-Za-z0-9._-]+)/g)) ids.add(match[1]!);
+  return [...ids];
+}
+
 /** Адрес, по которому сервер отдаёт вложение. */
 export function assetUrl(path: string): string {
   return ASSET_URL_PREFIX + path.split('/').map(encodeURIComponent).join('/');
