@@ -1,12 +1,12 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { PageId, Tree } from '../types';
-import type { LocalStore, PageBase } from './pageStore';
+import type { LocalStore, PageBase, TreeSync } from './pageStore';
 
 const DB_NAME = 'microdocs';
 const DB_VERSION = 2;
 const TREES = 'trees';
 const BODIES = 'bodies';
-/** От какой серверной версии каждая страница (с версии 2). */
+/** От какой серверной версии каждая страница и дерево (с версии 2). */
 const BASES = 'bases';
 /** Сколько ждать открытия базы, прежде чем считать, что её держит другая вкладка. */
 const BLOCKED_AFTER = 1500;
@@ -58,6 +58,7 @@ function openDatabase({ onBlockedChange, onBlocking }: IndexedDbEvents): Promise
 export function createIndexedDbStore(baseId: string, events: IndexedDbEvents = {}): LocalStore {
   const db = openDatabase(events);
   const bodyKey = (id: PageId) => `${baseId}/pages/${id}.md`;
+  const treeSyncKey = `${baseId}/tree.json`;
 
   return {
     async loadTree() {
@@ -95,6 +96,15 @@ export function createIndexedDbStore(baseId: string, events: IndexedDbEvents = {
 
     async saveBase(id, base) {
       await (await db).put(BASES, base, bodyKey(id));
+    },
+
+    async loadTreeSync() {
+      const sync = await (await db).get(BASES, treeSyncKey);
+      return (sync as TreeSync | undefined) ?? { rev: null, ops: [] };
+    },
+
+    async saveTreeSync(sync) {
+      await (await db).put(BASES, sync, treeSyncKey);
     },
   };
 }

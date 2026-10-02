@@ -1,5 +1,5 @@
 import type { PageId, Tree } from '../types';
-import type { FetchedPage, PutResult, RemoteStore } from './pageStore';
+import type { FetchedPage, FetchedTree, PutResult, PutTreeResult, RemoteStore } from './pageStore';
 import { deviceId } from './device';
 
 /**
@@ -87,6 +87,38 @@ export function createRemoteStore(): RemoteStore {
           : { kind: 'conflict', current: null };
       }
       throw new Error(`Страница не записалась: ${res.status}`);
+    },
+
+    async fetchTree(knownRev): Promise<FetchedTree> {
+      const res = await fetch(`${base}/tree`, {
+        cache: 'no-store',
+        headers: knownRev === null ? {} : { 'If-None-Match': `"${knownRev}"` },
+      });
+      if (res.status === 304) return { kind: 'unchanged' };
+      if (res.status === 404) return { kind: 'missing' };
+      if (!res.ok) throw new Error(`Дерево не прочиталось: ${res.status}`);
+      return { kind: 'found', tree: (await res.json()) as Tree, rev: revOf(res) };
+    },
+
+    async putTree(tree, condition): Promise<PutTreeResult> {
+      const res = await fetch(`${base}/tree`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-Id': deviceId(),
+          ...(condition === 'absent'
+            ? { 'If-None-Match': '*' }
+            : { 'If-Match': `"${condition.rev}"` }),
+        },
+        body: JSON.stringify(tree),
+      });
+      if (res.ok) return { kind: 'saved', rev: revOf(res) };
+      if (res.status === 412) {
+        return res.headers.has('ETag')
+          ? { kind: 'conflict', current: { tree: (await res.json()) as Tree, rev: revOf(res) } }
+          : { kind: 'conflict', current: null };
+      }
+      throw new Error(`Дерево не записалось: ${res.status}`);
     },
   };
 }

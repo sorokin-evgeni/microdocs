@@ -1,4 +1,5 @@
 import type { PageId, Tree } from '../types';
+import type { TreeOp } from '../domain/treeOps';
 
 /**
  * Хранилище базы знаний. Набор операций намеренно повторяет раскладку в S3:
@@ -25,11 +26,24 @@ export interface PageBase {
   text: string;
 }
 
-/** Локальное хранилище: ещё и помнит, от какой серверной версии каждая страница. */
+/**
+ * Дерево на устройстве относительно сервера: от какой версии оно происходит
+ * и какие правки ещё не отправлены. Если сервер ушёл вперёд, эти правки
+ * применяются заново поверх его дерева.
+ */
+export interface TreeSync {
+  /** null — дерево с сервера ещё не приходило. */
+  rev: number | null;
+  ops: TreeOp[];
+}
+
+/** Локальное хранилище: ещё и помнит, от какой серверной версии каждая страница и дерево. */
 export interface LocalStore extends PageStore {
   /** null — страница с сервера ещё не приходила. */
   loadBase(id: PageId): Promise<PageBase | null>;
   saveBase(id: PageId, base: PageBase): Promise<void>;
+  loadTreeSync(): Promise<TreeSync>;
+  saveTreeSync(sync: TreeSync): Promise<void>;
 }
 
 export type FetchedPage =
@@ -45,9 +59,20 @@ export type PutResult =
 /** Условие записи: «если версия всё ещё rev» или «если страницы ещё нет». */
 export type PutCondition = { rev: number } | 'absent';
 
-/** Сервер: страницы с версиями. */
+export type FetchedTree =
+  | { kind: 'unchanged' }
+  | { kind: 'missing' }
+  | { kind: 'found'; tree: Tree; rev: number };
+
+export type PutTreeResult =
+  | { kind: 'saved'; rev: number }
+  | { kind: 'conflict'; current: { tree: Tree; rev: number } | null };
+
+/** Сервер: страницы и дерево с версиями. */
 export interface RemoteStore extends PageStore {
   /** Тело страницы, если оно новее `knownRev`. */
   fetchPage(id: PageId, knownRev: number | null): Promise<FetchedPage>;
   putPage(id: PageId, body: string, condition: PutCondition): Promise<PutResult>;
+  fetchTree(knownRev: number | null): Promise<FetchedTree>;
+  putTree(tree: Tree, condition: PutCondition): Promise<PutTreeResult>;
 }

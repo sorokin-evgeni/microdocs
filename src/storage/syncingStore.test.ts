@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PageId, Tree } from '../types';
-import type { LocalStore, PageBase, RemoteStore } from './pageStore';
+import type { LocalStore, PageBase, RemoteStore, TreeSync } from './pageStore';
 import { createRescues } from './rescues';
 import { createOutbox } from './outbox';
 import {
@@ -17,6 +17,8 @@ import {
  */
 function memoryStore() {
   let tree: Tree | null = null;
+  let treeRev = 0;
+  let treeSync: TreeSync = { rev: null, ops: [] };
   const bodies = new Map<PageId, string>();
   const revs = new Map<PageId, number>();
   const bases = new Map<PageId, PageBase>();
@@ -36,6 +38,26 @@ function memoryStore() {
     async saveTree(next) {
       guard();
       tree = next;
+    },
+    async loadTreeSync() {
+      return treeSync;
+    },
+    async saveTreeSync(sync) {
+      treeSync = sync;
+    },
+    async fetchTree(knownRev) {
+      guard();
+      if (!tree) return { kind: 'missing' };
+      if (treeRev === knownRev) return { kind: 'unchanged' };
+      return { kind: 'found', tree, rev: treeRev };
+    },
+    async putTree(next, condition) {
+      guard();
+      const ok = condition === 'absent' ? !tree : tree !== null && treeRev === condition.rev;
+      if (!ok) return { kind: 'conflict', current: tree ? { tree, rev: treeRev } : null };
+      tree = next;
+      treeRev += 1;
+      return { kind: 'saved', rev: treeRev };
     },
     async loadBody(id) {
       guard();
@@ -84,7 +106,19 @@ function memoryStore() {
     revs.set(id, (revs.get(id) ?? 0) + 1);
   };
 
-  return { store, state, writeFromElsewhere, peek: () => ({ tree, bodies, revs, bases }) };
+  /** Дерево с другого устройства — прямо на «сервер». */
+  const writeTreeFromElsewhere = (next: Tree) => {
+    tree = next;
+    treeRev += 1;
+  };
+
+  return {
+    store,
+    state,
+    writeFromElsewhere,
+    writeTreeFromElsewhere,
+    peek: () => ({ tree, treeRev, treeSync, bodies, revs, bases }),
+  };
 }
 
 const дерево = (title: string): Tree => ({
@@ -460,6 +494,108 @@ describe('синхронизация с сервером', () => {
       expect(fetch).not.toHaveBeenCalled();
       expect(changes.filter((c) => c.id === 'p1' && c.after === 'моё, ещё не ушло')).toEqual([]);
       expect(local.peek().bodies.get('p1')).not.toBe(текст.replace('Отель', 'Хостел'));
+    });
+  });
+
+  describe('версии дерева', () => {
+    const исходное: Tree = {
+      roots: [
+        { id: 'a', title: 'A', children: [] },
+        { id: 'c', title: 'C', children: [] },
+      ],
+    };
+    const titles = (t: Tree | null) => t?.roots.map((n) => n.title);
+
+    /** Дерево уже на сервере и пришло на устройство. */
+    async function loaded() {
+      const ctx = setup();
+      ctx.remote.writeTreeFromElsewhere(исходное);
+      expect(await ctx.store.loadTree()).toEqual(исходное);
+      const trees: Tree[] = [];
+      ctx.store.subscribeTree((t) => trees.push(t));
+      return { ...ctx, trees };
+    }
+
+    it('правки уходят с версией и снимаются с устройства после записи', async () => {
+      const { remote, local, store } = await loaded();
+      await store.updateTree([{ type: 'rename', id: 'a', title: 'A2' }]);
+      await store.drain();
+      expect(titles(remote.peek().tree)).toEqual(['A2', 'C']);
+      expect(remote.peek().treeRev).toBe(2);
+      expect(local.peek().treeSync).toEqual({ rev: 2, ops: [] });
+    });
+
+    it('сервер ушёл вперёд — свои правки ложатся поверх его дерева', async () => {
+      const { remote, local, store, trees } = await loaded();
+      remote.writeTreeFromElsewhere({
+        roots: [...исходное.roots, { id: 'e', title: 'С другого', children: [] }],
+      });
+
+      await store.updateTree([{ type: 'rename', id: 'c', title: 'C отсюда' }]);
+      await store.drain();
+
+      expect(titles(remote.peek().tree)).toEqual(['A', 'C отсюда', 'С другого']);
+      expect(titles(local.peek().tree)).toEqual(['A', 'C отсюда', 'С другого']);
+      expect(trees.map(titles)).toEqual([['A', 'C отсюда', 'С другого']]);
+      expect(local.peek().treeSync.ops).toEqual([]);
+    });
+
+    it('правка, сделанная пока дерево отправлялось, не выпадает из журнала', async () => {
+      const { remote, local, store } = await loaded();
+      // Отправка, получив ответ, снимает с журнала отправленное. Придержим
+      // эту запись, пока вклинивается новая правка: без очереди к состоянию
+      // дерева отправка записала бы журнал по старому чтению и правку потеряла.
+      let ackStarted = false;
+      let releaseAck!: () => void;
+      const ackGate = new Promise<void>((resolve) => (releaseAck = resolve));
+      const { saveTreeSync } = local.store;
+      local.store.saveTreeSync = async (sync) => {
+        if (sync.rev === 2 && !ackStarted) {
+          ackStarted = true;
+          await ackGate;
+        }
+        await saveTreeSync(sync);
+      };
+
+      await store.updateTree([{ type: 'rename', id: 'a', title: 'A2' }]);
+      await vi.waitFor(() => expect(ackStarted).toBe(true));
+      const edit = store.updateTree([{ type: 'rename', id: 'c', title: 'C2' }]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      releaseAck();
+      await edit;
+
+      // Пока C2 не ушла, дерево правят на другом устройстве: при расхождении
+      // C2 должна лечь поверх, а для этого она должна быть в журнале.
+      remote.writeTreeFromElsewhere({
+        roots: [
+          { id: 'a', title: 'A с другого', children: [] },
+          { id: 'c', title: 'C', children: [] },
+        ],
+      });
+      await store.drain();
+      expect(titles(remote.peek().tree)).toEqual(['A с другого', 'C2']);
+    });
+
+    it('сверка подтягивает дерево с другого устройства', async () => {
+      const { remote, store, trees } = await loaded();
+      remote.writeTreeFromElsewhere({ roots: [исходное.roots[1]!] });
+      await store.refreshTree();
+      expect(trees.map(titles)).toEqual([['C']]);
+
+      await store.refreshTree();
+      expect(trees).toHaveLength(1); // не изменилось — тихо
+    });
+
+    it('дерево, записанное до появления версий, пишется поверх, как раньше', async () => {
+      const { remote, local, store, outbox } = setup();
+      await remote.store.saveTree(исходное); // на сервере — версия 0
+      // На устройстве — правка, сделанная до обновления: дерево целиком, версии нет.
+      await local.store.saveTree({ roots: [{ id: 'a', title: 'A до обновления', children: [] }] });
+      outbox.add('tree');
+
+      await store.drain();
+      expect(titles(remote.peek().tree)).toEqual(['A до обновления']);
+      expect(remote.peek().treeRev).toBe(1);
     });
   });
 });

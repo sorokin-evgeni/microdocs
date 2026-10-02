@@ -1,5 +1,6 @@
 import type { PageId, Tree } from '../types';
 import { merge3 } from '../domain/merge';
+import { applyOps, type TreeOp } from '../domain/treeOps';
 import type { LocalStore, PageStore, RemoteStore } from './pageStore';
 import type { OutboxEntry, createOutbox } from './outbox';
 import type { Rescues } from './rescues';
@@ -18,6 +19,15 @@ export interface SyncingStore extends PageStore {
   refreshPage: (id: PageId) => Promise<void>;
   /** Страница поменялась не из редактора: пришла с сервера или слилась. */
   subscribe: (listener: (change: PageChange) => void) => () => void;
+  /**
+   * Правки дерева: применяются к локальному дереву и копятся до отправки.
+   * Если сервер тем временем ушёл вперёд, применяются заново поверх его дерева.
+   */
+  updateTree: (ops: TreeOp[]) => Promise<void>;
+  /** Сверить дерево с сервером. */
+  refreshTree: () => Promise<void>;
+  /** Дерево поменялось не отсюда: пришло с сервера или пересобрано поверх него. */
+  subscribeTree: (listener: (tree: Tree) => void) => () => void;
   /** Вернуть свою версию, проигравшую конфликт. */
   restoreRescue: (id: PageId) => Promise<void>;
   /** Забыть свою версию, проигравшую конфликт. */
@@ -81,7 +91,9 @@ const PUSH_ATTEMPTS = 3;
  * если обе стороны правили одно место — остаётся серверная версия, а своя
  * откладывается в спасённые, и интерфейс предлагает её вернуть.
  *
- * Дерево пока пишется как раньше, last-wins (FR-34).
+ * Дерево тоже пишется с версией, но не сливается текстом: на устройстве
+ * копятся сами правки (TreeOp), и при расхождении они применяются заново
+ * поверх дерева с сервера.
  */
 export function createSyncingStore({
   local,
@@ -96,6 +108,76 @@ export function createSyncingStore({
 
   const listeners = new Set<(change: PageChange) => void>();
   const emit = (change: PageChange) => listeners.forEach((listener) => listener(change));
+
+  const treeListeners = new Set<(tree: Tree) => void>();
+  const emitTree = (tree: Tree) => treeListeners.forEach((listener) => listener(tree));
+
+  // Состояние дерева (само дерево, версия, неотправленные правки) меняют
+  // и правки, и отправка, и сверка. Каждое изменение — чтение и запись,
+  // и без очереди одно затирало бы другое: например, отправка, снимая
+  // отправленные правки, потеряла бы ту, что добавили, пока шёл запрос.
+  let treeTail: Promise<unknown> = Promise.resolve();
+  function withTree<T>(fn: () => Promise<T>): Promise<T> {
+    const run = treeTail.then(fn, fn);
+    treeTail = run.catch(() => {});
+    return run;
+  }
+
+  /** Отправить дерево с версией, от которой оно происходит. */
+  async function pushTree(entry: OutboxEntry): Promise<void> {
+    for (let attempt = 0; attempt < PUSH_ATTEMPTS; attempt++) {
+      const generation = outbox.generation(entry);
+      if (generation === undefined) return;
+
+      const { tree, sync } = await withTree(async () => ({
+        tree: await local.loadTree(),
+        sync: await local.loadTreeSync(),
+      }));
+      if (!tree) {
+        outbox.remove(entry, generation);
+        return;
+      }
+      const sent = sync.ops.length;
+
+      // Без версии — дерево с сервера ещё не приходило: обычно база новая,
+      // тогда создаём. Если на сервере версия 0 — записано до появления
+      // версий и с тех пор не правлено, — пишем поверх, как раньше.
+      let result = await remote.putTree(tree, sync.rev === null ? 'absent' : { rev: sync.rev });
+      if (sync.rev === null && result.kind === 'conflict' && result.current?.rev === 0) {
+        result = await remote.putTree(tree, { rev: 0 });
+      }
+      if (sync.rev !== null && result.kind === 'conflict' && result.current === null) {
+        result = await remote.putTree(tree, 'absent');
+      }
+
+      if (result.kind === 'saved') {
+        const rev = result.rev;
+        await withTree(async () => {
+          const now = await local.loadTreeSync();
+          await local.saveTreeSync({ rev, ops: now.ops.slice(sent) });
+        });
+        outbox.remove(entry, generation);
+        return;
+      }
+      const current = result.current;
+      if (current === null) continue;
+
+      // Сервер ушёл вперёд: его дерево плюс наши неотправленные правки.
+      const ours = await withTree(async () => {
+        const now = await local.loadTreeSync();
+        const rebased = applyOps(current.tree, now.ops);
+        await local.saveTree(rebased);
+        await local.saveTreeSync({ rev: current.rev, ops: now.ops });
+        emitTree(rebased);
+        return now.ops.length;
+      });
+      if (ours === 0) {
+        // Своих правок нет — серверное дерево и есть итог.
+        outbox.remove(entry, generation);
+        return;
+      }
+    }
+  }
 
   /** Отправить страницу с версией, от которой она происходит. */
   async function pushPage(entry: OutboxEntry, id: PageId): Promise<void> {
@@ -155,8 +237,8 @@ export function createSyncingStore({
     if (generation === undefined) return;
 
     if (entry === 'tree') {
-      const tree = await local.loadTree();
-      if (tree) await remote.saveTree(tree);
+      await pushTree(entry);
+      return;
     } else if (entry.startsWith('page:')) {
       await pushPage(entry, entry.slice('page:'.length));
       return;
@@ -260,24 +342,84 @@ export function createSyncingStore({
         }
       }
 
-      let tree: Tree | null;
+      const cached = await local.loadTree();
+      const sync = await local.loadTreeSync();
+      let fetched;
       try {
-        tree = await remote.loadTree();
+        // Версию называем, только если есть и само дерево: иначе «не изменилось»
+        // оставило бы нас ни с чем.
+        fetched = await remote.fetchTree(cached ? sync.rev : null);
       } catch {
         report('нет связи');
         // null здесь значил бы «базы нет», и её создали бы заново поверх
         // настоящей. Не знаем — так и говорим.
-        const cached = await local.loadTree();
         if (!cached) throw new BaseUnavailableError();
         return cached;
       }
-      if (tree) await local.saveTree(tree);
       report('синхронизировано');
-      return tree ?? (await local.loadTree());
+      if (fetched.kind !== 'found') return cached;
+
+      const { tree, rev } = fetched;
+      return withTree(async () => {
+        // Пока ходили на сервер, могли успеть поправить — тогда поверх.
+        const now = await local.loadTreeSync();
+        const result = applyOps(tree, now.ops);
+        await local.saveTree(result);
+        await local.saveTreeSync({ rev, ops: now.ops });
+        return result;
+      });
     },
+
     async saveTree(tree: Tree) {
-      await local.saveTree(tree);
+      // Дерево целиком — только для новой базы: правок, которые надо
+      // сохранить поверх, у неё нет.
+      await withTree(async () => {
+        await local.saveTree(tree);
+        const sync = await local.loadTreeSync();
+        await local.saveTreeSync({ rev: sync.rev, ops: [] });
+      });
       enqueue('tree');
+    },
+
+    async updateTree(ops) {
+      if (ops.length === 0) return;
+      await withTree(async () => {
+        const tree = await local.loadTree();
+        const sync = await local.loadTreeSync();
+        if (tree) await local.saveTree(applyOps(tree, ops));
+        await local.saveTreeSync({ rev: sync.rev, ops: [...sync.ops, ...ops] });
+      });
+      enqueue('tree');
+    },
+
+    async refreshTree() {
+      if (outbox.list().includes('tree')) {
+        void drain();
+        return;
+      }
+      const sync = await local.loadTreeSync();
+      let fetched;
+      try {
+        fetched = await remote.fetchTree(sync.rev);
+      } catch {
+        report('нет связи');
+        return;
+      }
+      if (fetched.kind !== 'found') return;
+      const { tree, rev } = fetched;
+      const result = await withTree(async () => {
+        const now = await local.loadTreeSync();
+        const next = applyOps(tree, now.ops);
+        await local.saveTree(next);
+        await local.saveTreeSync({ rev, ops: now.ops });
+        return next;
+      });
+      emitTree(result);
+    },
+
+    subscribeTree(listener) {
+      treeListeners.add(listener);
+      return () => treeListeners.delete(listener);
     },
 
     async loadBody(id: PageId) {
