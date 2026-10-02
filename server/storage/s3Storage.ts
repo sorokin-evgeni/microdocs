@@ -1,12 +1,13 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { fromIni } from '@aws-sdk/credential-providers';
-import type { PageId, Tree } from '../../shared/types';
-import type { BaseStorage } from './port';
+import type { PageId } from '../../shared/types';
+import type { BaseStorage, DocMeta, DocRef, WriteMeta } from './port';
 
 /**
  * Адаптер к S3. Только здесь известно, что база — это объекты в бакете:
@@ -17,7 +18,8 @@ import type { BaseStorage } from './port';
  *
  * Ключ к бакету живёт только на сервере и в браузер не попадает (NFR-17).
  * История версий держится на версионировании объектов (NFR-7), поэтому
- * удаление здесь — обычный DELETE: прежние версии остаются.
+ * удаление страницы — обычный DELETE: прежние версии остаются. Насовсем
+ * удаляются только промежуточные версии одной серии правок (deleteDocVersion).
  */
 export function createS3Storage(): BaseStorage {
   const bucket = process.env.MICRODOCS_S3_BUCKET ?? 'microdocs-data';
@@ -35,56 +37,56 @@ export function createS3Storage(): BaseStorage {
   const treeKey = (baseId: string) => `${baseId}/tree.json`;
   const pageKey = (baseId: string, id: PageId) => `${baseId}/pages/${id}.md`;
   const assetKey = (baseId: string, path: string) => `${baseId}/assets/${path}`;
-
-  async function get(key: string): Promise<string | null> {
-    try {
-      const res = await client.send(
-        new GetObjectCommand({ Bucket: bucket, Key: key }),
-      );
-      return (await res.Body?.transformToString()) ?? null;
-    } catch (error) {
-      if (isNotFound(error)) return null;
-      throw error;
-    }
-  }
-
-  async function put(key: string, body: string, contentType: string) {
-    await client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-      }),
-    );
-  }
+  const docKey = (baseId: string, ref: DocRef) =>
+    ref.kind === 'tree' ? treeKey(baseId) : pageKey(baseId, ref.id);
+  const docType = (ref: DocRef) =>
+    ref.kind === 'tree' ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8';
 
   return {
-    async readTree(baseId) {
-      const text = await get(treeKey(baseId));
-      return text === null ? null : (JSON.parse(text) as Tree);
+    async readDoc(baseId, ref) {
+      try {
+        const res = await client.send(
+          new GetObjectCommand({ Bucket: bucket, Key: docKey(baseId, ref) }),
+        );
+        const body = (await res.Body?.transformToString()) ?? '';
+        return { body, meta: fromS3(res.Metadata, res.VersionId) };
+      } catch (error) {
+        if (isNotFound(error)) return null;
+        throw error;
+      }
     },
-
-    async writeTree(baseId, tree) {
-      await put(
-        treeKey(baseId),
-        JSON.stringify(tree, null, 2),
-        'application/json; charset=utf-8',
+    async headDoc(baseId, ref) {
+      try {
+        const res = await client.send(
+          new HeadObjectCommand({ Bucket: bucket, Key: docKey(baseId, ref) }),
+        );
+        return fromS3(res.Metadata, res.VersionId);
+      } catch (error) {
+        if (isNotFound(error)) return null;
+        throw error;
+      }
+    },
+    async writeDoc(baseId, ref, body, meta) {
+      const res = await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: docKey(baseId, ref),
+          Body: body,
+          ContentType: docType(ref),
+          Metadata: toS3(meta),
+        }),
+      );
+      return res.VersionId ?? null;
+    },
+    async deleteDocVersion(baseId, ref, versionId) {
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: docKey(baseId, ref),
+          VersionId: versionId,
+        }),
       );
     },
-
-    readPage(baseId, pageId) {
-      return get(pageKey(baseId, pageId));
-    },
-
-    async writePage(baseId, pageId, markdown) {
-      await put(
-        pageKey(baseId, pageId),
-        markdown,
-        'text/markdown; charset=utf-8',
-      );
-    },
-
     async deletePage(baseId, pageId) {
       await client.send(
         new DeleteObjectCommand({
@@ -93,7 +95,6 @@ export function createS3Storage(): BaseStorage {
         }),
       );
     },
-
     // Файл читается в память целиком: вложения — картинки и документы на мегабайты.
     async readAsset(baseId, path) {
       try {
@@ -107,6 +108,31 @@ export function createS3Storage(): BaseStorage {
         throw error;
       }
     },
+  };
+}
+
+/**
+ * Метаданные версии лежат в пользовательских метаданных объекта
+ * (`x-amz-meta-*`): тело остаётся чистым Markdown или JSON.
+ * У объектов, записанных до появления версий, их нет — это версия 0.
+ */
+function toS3(meta: WriteMeta): Record<string, string> {
+  const out: Record<string, string> = { rev: String(meta.rev) };
+  if (meta.device) out.device = meta.device;
+  if (meta.burstStart !== null) out['burst-start'] = String(meta.burstStart);
+  return out;
+}
+
+function fromS3(metadata: Record<string, string> | undefined, versionId: string | undefined): DocMeta {
+  const number = (value: string | undefined) => {
+    const n = Number(value);
+    return value !== undefined && Number.isFinite(n) ? n : null;
+  };
+  return {
+    rev: number(metadata?.rev) ?? 0,
+    device: metadata?.device || null,
+    burstStart: number(metadata?.['burst-start']),
+    versionId: versionId ?? null,
   };
 }
 

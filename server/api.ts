@@ -1,8 +1,16 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, extname } from 'node:path';
 import type { Tree } from '../shared/types';
-import type { BaseStorage } from './storage/port';
+import type { BaseStorage, DocRef } from './storage/port';
 import { resolveBaseId } from './identity';
+import {
+  createLocks,
+  etag,
+  parseEtag,
+  parsePrecondition,
+  writeVersioned,
+  type WriteResult,
+} from './versioning';
 
 /**
  * HTTP-контракт. Не знает ни где лежат данные, ни кому они принадлежат:
@@ -15,12 +23,33 @@ import { resolveBaseId } from './identity';
  * База в адресе не упоминается намеренно: её определяет сертификат клиента,
  * иначе можно было бы попросить чужую.
  *
+ * Дерево и страницы версионируются (см. versioning.ts):
+ *   - GET отдаёт `ETag: "<rev>"`; с `If-None-Match` того же значения — 304;
+ *   - PUT с `If-Match: "<rev>"` пишет, только если версия не сменилась,
+ *     иначе 412 с тем, что лежит сейчас, и его ETag;
+ *   - PUT с `If-None-Match: *` пишет, только если документа ещё нет;
+ *   - `X-Device-Id` — от какого устройства запись, для группировки правок.
+ *
  * Возвращает true, если запрос его; false — пусть обрабатывает кто-то другой.
  */
+export interface ApiOptions {
+  /** Текущее время, мс. В тестах подменяется. */
+  now?: () => number;
+  /**
+   * Отказывать в записи без `If-Match` / `If-None-Match` (428). Пока клиенты
+   * на старой версии, запись без условия принимается и затирает как раньше.
+   */
+  requirePrecondition?: boolean;
+}
+
 export function createApi(
   storage: BaseStorage,
   identify: (req: IncomingMessage) => string | null = resolveBaseId,
+  { now = Date.now, requirePrecondition = false }: ApiOptions = {},
 ) {
+  const withLock = createLocks();
+  const docs: Docs = { storage, withLock, now, requirePrecondition };
+
   return async function handleApi(
     req: IncomingMessage,
     res: ServerResponse,
@@ -37,7 +66,7 @@ export function createApi(
 
     try {
       if (parts[1] === 'tree' && parts.length === 2) {
-        await handleTree(req, res, storage, baseId);
+        await handleTree(req, res, docs, baseId);
         return true;
       }
 
@@ -47,7 +76,7 @@ export function createApi(
           send(res, 400, { error: 'Недопустимый идентификатор страницы' });
           return true;
         }
-        await handlePage(req, res, storage, baseId, id);
+        await handlePage(req, res, docs, baseId, id);
         return true;
       }
 
@@ -69,19 +98,25 @@ export function createApi(
   };
 }
 
+interface Docs {
+  storage: BaseStorage;
+  withLock: ReturnType<typeof createLocks>;
+  now: () => number;
+  requirePrecondition: boolean;
+}
+
+const TREE: DocRef = { kind: 'tree' };
+const JSON_TYPE = 'application/json; charset=utf-8';
+const MARKDOWN_TYPE = 'text/markdown; charset=utf-8';
+
 async function handleTree(
   req: IncomingMessage,
   res: ServerResponse,
-  storage: BaseStorage,
+  docs: Docs,
   baseId: string,
 ) {
   if (req.method === 'GET') {
-    const tree = await storage.readTree(baseId);
-    if (tree === null) {
-      send(res, 404, { error: 'Дерево ещё не создано' });
-      return;
-    }
-    send(res, 200, tree);
+    await getDoc(req, res, docs, baseId, TREE, JSON_TYPE, 'Дерево ещё не создано');
     return;
   }
 
@@ -97,8 +132,7 @@ async function handleTree(
       send(res, 400, { error: 'Ожидалось дерево с полем roots' });
       return;
     }
-    await storage.writeTree(baseId, tree);
-    send(res, 200, { ok: true });
+    await putDoc(req, res, docs, baseId, TREE, JSON.stringify(tree, null, 2), JSON_TYPE);
     return;
   }
 
@@ -108,33 +142,115 @@ async function handleTree(
 async function handlePage(
   req: IncomingMessage,
   res: ServerResponse,
-  storage: BaseStorage,
+  docs: Docs,
   baseId: string,
   id: string,
 ) {
+  const ref: DocRef = { kind: 'page', id };
+
   if (req.method === 'GET') {
-    const markdown = await storage.readPage(baseId, id);
-    if (markdown === null) {
-      send(res, 404, { error: 'Страницы нет' });
-      return;
-    }
-    sendRaw(res, 200, markdown, 'text/markdown; charset=utf-8');
+    await getDoc(req, res, docs, baseId, ref, MARKDOWN_TYPE, 'Страницы нет');
     return;
   }
 
   if (req.method === 'PUT') {
-    await storage.writePage(baseId, id, await readBody(req));
-    send(res, 200, { ok: true });
+    await putDoc(req, res, docs, baseId, ref, await readBody(req), MARKDOWN_TYPE);
     return;
   }
 
+  // Удаление безусловное: страницу убирают из дерева, а прежние версии хранит история.
   if (req.method === 'DELETE') {
-    await storage.deletePage(baseId, id);
+    await docs.storage.deletePage(baseId, id);
     send(res, 200, { ok: true });
     return;
   }
 
   send(res, 405, { error: 'Метод не поддерживается' });
+}
+
+async function getDoc(
+  req: IncomingMessage,
+  res: ServerResponse,
+  docs: Docs,
+  baseId: string,
+  ref: DocRef,
+  contentType: string,
+  missing: string,
+) {
+  const doc = await docs.storage.readDoc(baseId, ref);
+  if (doc === null) {
+    send(res, 404, { error: missing });
+    return;
+  }
+  res.setHeader('ETag', etag(doc.meta.rev));
+  // Копию держит только браузер владельца, и прежде чем ею пользоваться — сверяется.
+  res.setHeader('Cache-Control', 'private, no-cache');
+
+  const known = header(req, 'if-none-match');
+  if (known !== undefined && parseEtag(known) === doc.meta.rev) {
+    res.statusCode = 304;
+    res.end();
+    return;
+  }
+  sendRaw(res, 200, doc.body, contentType);
+}
+
+async function putDoc(
+  req: IncomingMessage,
+  res: ServerResponse,
+  docs: Docs,
+  baseId: string,
+  ref: DocRef,
+  body: string,
+  contentType: string,
+) {
+  const precondition = parsePrecondition(header(req, 'if-match'), header(req, 'if-none-match'));
+  if (precondition === null) {
+    send(res, 400, { error: 'Не разобрался заголовок If-Match или If-None-Match' });
+    return;
+  }
+  if (precondition.kind === 'none' && docs.requirePrecondition) {
+    send(res, 428, { error: 'Нужен If-Match с версией, от которой правили' });
+    return;
+  }
+
+  const key = `${baseId}/${ref.kind === 'tree' ? 'tree' : `pages/${ref.id}`}`;
+  const result: WriteResult = await docs.withLock(key, () =>
+    writeVersioned(docs.storage, baseId, ref, body, {
+      precondition,
+      device: deviceId(req),
+      now: docs.now(),
+    }),
+  );
+
+  if (result.ok) {
+    res.setHeader('ETag', etag(result.rev));
+    send(res, 200, { ok: true });
+    return;
+  }
+
+  // Версия сменилась: отдаём то, что лежит сейчас, — клиенту не нужен лишний GET.
+  if (result.current) {
+    res.setHeader('ETag', etag(result.current.meta.rev));
+    sendRaw(res, 412, result.current.body, contentType);
+  } else {
+    send(res, 412, { error: 'Документа нет' });
+  }
+}
+
+function header(req: IncomingMessage, name: string): string | undefined {
+  const value = req.headers?.[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Устройство, от которого запись. Только для группировки правок: личность
+ * определяет сертификат, а не этот заголовок. Уходит в метаданные хранилища,
+ * поэтому — только безопасные символы.
+ */
+function deviceId(req: IncomingMessage): string | null {
+  const value = header(req, 'x-device-id');
+  return value && /^[A-Za-z0-9-]{1,64}$/.test(value) ? value : null;
 }
 
 const ASSET_TYPES: Record<string, string> = {
