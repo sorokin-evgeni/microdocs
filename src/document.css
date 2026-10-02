@@ -40,18 +40,69 @@
 .page-column {
   max-width: calc(640px + 2 * 24px);
   margin: 0 auto;
-  padding: 36px 24px 120px;
+  /* Сверху два яруса: хлебные крошки и под ними подпись «Добавить иконку». */
+  padding: 60px 24px 120px;
   color: var(--doc-fg);
   font-family: var(--doc-font);
   font-feature-settings: 'cv11', 'ss03';
   /* Подписи действий прячутся по ширине колонки, а не окна: её ужимает и список слева. */
   container-type: inline-size;
+  /* Якорь для хлебных крошек в верхнем отступе. */
+  position: relative;
 }
 
 @media (max-width: 560px) {
   .page-column {
-    padding: 20px 16px 96px;
+    /* Сверху — место под крошки. */
+    padding: 28px 16px 96px;
   }
+}
+
+/*
+ * Хлебные крошки — в верхнем отступе колонки, а не в потоке: название
+ * не прыгает при переходе между страницами с путём и без.
+ */
+.page-breadcrumbs {
+  position: absolute;
+  top: 12px;
+  left: 24px;
+  right: 24px;
+}
+
+@media (max-width: 560px) {
+  .page-breadcrumbs {
+    top: 6px;
+    left: 16px;
+    right: 16px;
+  }
+}
+
+.page-breadcrumbs-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* Длинное название ужимается многоточием, а не выталкивает соседей. */
+.page-breadcrumb {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.4;
+  color: var(--mantine-color-dimmed);
+}
+
+.page-breadcrumb:hover {
+  color: var(--doc-strong);
+  text-decoration: underline;
+}
+
+.page-breadcrumb-sep {
+  flex-shrink: 0;
 }
 
 /* Шапка страницы: иконка сверху, под ней название и действия. Якорь для подписи «Добавить иконку». */

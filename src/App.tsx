@@ -26,12 +26,13 @@ import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
 import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
 import { PageHeader } from './components/PageHeader';
+import { Breadcrumbs } from './components/Breadcrumbs';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Brand } from './components/Brand';
 import { ArchiveSection } from './components/ArchiveSection';
 import { ConflictNotices } from './components/ConflictNotices';
 import { Editor } from './components/Editor';
-import { findNode, subtreeIds } from './domain/tree';
+import { ancestorIds, findNode, subtreeIds } from './domain/tree';
 import type { PageId, TreeNode } from './types';
 
 /**
@@ -248,6 +249,10 @@ export function App() {
         )}
         {selected ? (
           <div className="page-column">
+            <Breadcrumbs
+              trail={ancestorIds(base.tree!, selected.id).flatMap((id) => findNode(base.tree!, id) ?? [])}
+              onOpen={handleSelect}
+            />
             <PageHeader
               title={selected.title}
               icon={selected.icon}
