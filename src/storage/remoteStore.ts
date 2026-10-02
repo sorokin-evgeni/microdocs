@@ -1,5 +1,6 @@
 import type { PageId, Tree } from '../types';
-import type { PageStore } from './pageStore';
+import type { FetchedPage, PutResult, RemoteStore } from './pageStore';
+import { deviceId } from './device';
 
 /**
  * Хранилище на сервере. Ключ к S3 остаётся там, в браузер не попадает (NFR-17).
@@ -7,7 +8,7 @@ import type { PageStore } from './pageStore';
  * База в адресах не указывается: сервер определяет её по клиентскому
  * сертификату, поэтому попросить чужую невозможно.
  */
-export function createRemoteStore(): PageStore {
+export function createRemoteStore(): RemoteStore {
   const base = '/api';
 
   return {
@@ -21,7 +22,7 @@ export function createRemoteStore(): PageStore {
     async saveTree(tree) {
       const res = await fetch(`${base}/tree`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId() },
         body: JSON.stringify(tree),
       });
       if (!res.ok) throw new Error(`Дерево не записалось: ${res.status}`);
@@ -37,7 +38,7 @@ export function createRemoteStore(): PageStore {
     async saveBody(id, body) {
       const res = await fetch(`${base}/pages/${encodeURIComponent(id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+        headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'X-Device-Id': deviceId() },
         body,
       });
       if (!res.ok) throw new Error(`Страница не записалась: ${res.status}`);
@@ -53,5 +54,45 @@ export function createRemoteStore(): PageStore {
         }
       }
     },
+
+    async fetchPage(id, knownRev): Promise<FetchedPage> {
+      const res = await fetch(`${base}/pages/${encodeURIComponent(id)}`, {
+        // Сверяемся сами, по номеру версии: кеш браузера тут только мешает.
+        cache: 'no-store',
+        headers: knownRev === null ? {} : { 'If-None-Match': `"${knownRev}"` },
+      });
+      if (res.status === 304) return { kind: 'unchanged' };
+      if (res.status === 404) return { kind: 'missing' };
+      if (!res.ok) throw new Error(`Страница не прочиталась: ${res.status}`);
+      return { kind: 'found', body: await res.text(), rev: revOf(res) };
+    },
+
+    async putPage(id, body, condition): Promise<PutResult> {
+      const res = await fetch(`${base}/pages/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'X-Device-Id': deviceId(),
+          ...(condition === 'absent'
+            ? { 'If-None-Match': '*' }
+            : { 'If-Match': `"${condition.rev}"` }),
+        },
+        body,
+      });
+      if (res.ok) return { kind: 'saved', rev: revOf(res) };
+      if (res.status === 412) {
+        // Без ETag — страницы на сервере нет; с ним — в теле то, что там сейчас.
+        return res.headers.has('ETag')
+          ? { kind: 'conflict', current: { body: await res.text(), rev: revOf(res) } }
+          : { kind: 'conflict', current: null };
+      }
+      throw new Error(`Страница не записалась: ${res.status}`);
+    },
   };
+}
+
+function revOf(res: Response): number {
+  const rev = Number(res.headers.get('ETag')?.replace(/^W\//, '').replace(/"/g, ''));
+  if (!Number.isFinite(rev)) throw new Error('Сервер не сообщил версию');
+  return rev;
 }

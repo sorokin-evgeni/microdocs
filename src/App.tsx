@@ -16,6 +16,7 @@ import { createIndexedDbStore } from './storage/indexedDbStore';
 import { createRemoteStore } from './storage/remoteStore';
 import { createOutbox } from './storage/outbox';
 import { createSyncingStore, type SyncState } from './storage/syncingStore';
+import { createRescues } from './storage/rescues';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
 import { useAppUpdate } from './state/useAppUpdate';
@@ -27,6 +28,7 @@ import { PageHeader } from './components/PageHeader';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Brand } from './components/Brand';
 import { ArchiveSection } from './components/ArchiveSection';
+import { ConflictNotices } from './components/ConflictNotices';
 import { Editor } from './components/Editor';
 import { findNode, subtreeIds } from './domain/tree';
 import type { PageId, TreeNode } from './types';
@@ -40,15 +42,37 @@ const LOCAL_CACHE_ID = 'default';
 export function App() {
   const [syncState, setSyncState] = useState<SyncState>('синхронизировано');
 
+  // Новая версия приложения перестраивает локальную базу; пока в другой
+  // вкладке открыта старая, перестройка ждёт — без объяснения это пустой экран.
+  const [dbBlocked, setDbBlocked] = useState(false);
+
+  const rescues = useMemo(() => createRescues(LOCAL_CACHE_ID), []);
   const store = useMemo(
     () =>
-      createSyncingStore(
-        createIndexedDbStore(LOCAL_CACHE_ID),
-        createRemoteStore(),
-        createOutbox(LOCAL_CACHE_ID),
-        setSyncState,
-      ),
-    [],
+      createSyncingStore({
+        local: createIndexedDbStore(LOCAL_CACHE_ID, {
+          onBlockedChange: setDbBlocked,
+          // Мешаем новой версии в другой вкладке — уступаем: перезагрузка
+          // поднимет новую и здесь. Недописанное уйдёт в базу по pagehide.
+          onBlocking: () => window.location.reload(),
+        }),
+        remote: createRemoteStore(),
+        outbox: createOutbox(LOCAL_CACHE_ID),
+        rescues,
+        onState: setSyncState,
+      }),
+    [rescues],
+  );
+
+  // Свои версии, проигравшие конфликт. Переживают перезагрузку — поэтому
+  // начальный список берётся из хранилища, а не только из событий.
+  const [rescued, setRescued] = useState(() => rescues.list());
+  useEffect(
+    () =>
+      store.subscribe((change) => {
+        if (change.conflict) setRescued(rescues.list());
+      }),
+    [store, rescues],
   );
 
   // Связь вернулась — досылаем накопившееся (FR-32).
@@ -221,11 +245,17 @@ export function App() {
               <Editor
                 pageId={selected.id}
                 body={page.body}
+                revision={page.revision}
                 onChange={page.change}
                 onOpenPage={handleOpenPage}
               />
             )}
           </div>
+        ) : dbBlocked ? (
+          <Text size="sm" c="dimmed" p="md">
+            Ждём локальную базу. Если microdocs открыт в другой вкладке или окне — там,
+            скорее всего, прежняя версия. Закройте её, эта загрузится сама.
+          </Text>
         ) : base.unavailable ? (
           <Text size="sm" c="dimmed" p="md">
             Нет связи, а на этом устройстве базы ещё нет. Загрузится, когда связь
@@ -237,6 +267,22 @@ export function App() {
           </Text>
         ) : null}
       </AppShell.Main>
+
+      <ConflictNotices
+        notices={rescued.map((r) => ({
+          id: r.id,
+          title: (base.tree && findNode(base.tree, r.id)?.title) ?? '',
+        }))}
+        onOpen={handleOpenPage}
+        onRestore={(id) => {
+          void store.restoreRescue(id);
+          setRescued(rescues.list().filter((r) => r.id !== id));
+        }}
+        onDismiss={(id) => {
+          store.dismissRescue(id);
+          setRescued(rescues.list());
+        }}
+      />
 
       {base.tree && (
         <MovePageModal

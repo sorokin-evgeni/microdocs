@@ -5,6 +5,10 @@ export interface Autosave<T> {
   schedule: (key: string, value: T) => void;
   /** Записать отложенное прямо сейчас. */
   flush: () => void;
+  /** Отложенное и ещё не записанное значение ключа; undefined — ничего не ждёт. */
+  pending: (key: string) => T | undefined;
+  /** Забыть отложенное, не записывая: его место заняло что-то новее. */
+  discard: () => void;
 }
 
 /** Сколько ждать тишины перед записью на устройство. */
@@ -68,5 +72,18 @@ export function useAutosave<T>(
     };
   }, [flush]);
 
-  return { schedule, flush };
+  const pending_ = useCallback(
+    (key: string) => (pending.current?.key === key ? pending.current.value : undefined),
+    [],
+  );
+
+  const discard = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    if (maxTimer.current !== null) clearTimeout(maxTimer.current);
+    timer.current = null;
+    maxTimer.current = null;
+    pending.current = null;
+  }, []);
+
+  return { schedule, flush, pending: pending_, discard };
 }

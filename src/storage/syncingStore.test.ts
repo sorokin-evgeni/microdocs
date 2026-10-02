@@ -1,24 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PageId, Tree } from '../types';
-import type { PageStore } from './pageStore';
+import type { LocalStore, PageBase, RemoteStore } from './pageStore';
+import { createRescues } from './rescues';
 import { createOutbox } from './outbox';
 import {
   BaseUnavailableError,
   createSyncingStore,
+  type PageChange,
   type SyncState,
   type SyncTiming,
 } from './syncingStore';
 
+/**
+ * Хранилище в памяти: годится и как локальное (помнит базовые версии),
+ * и как сервер (ведёт номера версий и пишет с условием, как настоящий).
+ */
 function memoryStore() {
   let tree: Tree | null = null;
   const bodies = new Map<PageId, string>();
+  const revs = new Map<PageId, number>();
+  const bases = new Map<PageId, PageBase>();
   const state = { offline: false };
 
   const guard = () => {
     if (state.offline) throw new Error('нет сети');
   };
+  const current = (id: PageId) =>
+    bodies.has(id) ? { body: bodies.get(id)!, rev: revs.get(id) ?? 0 } : null;
 
-  const store: PageStore = {
+  const store: LocalStore & RemoteStore = {
     async loadTree() {
       guard();
       return tree;
@@ -37,11 +47,44 @@ function memoryStore() {
     },
     async deleteBodies(ids) {
       guard();
-      ids.forEach((id) => bodies.delete(id));
+      ids.forEach((id) => {
+        bodies.delete(id);
+        revs.delete(id);
+        bases.delete(id);
+      });
+    },
+    async loadBase(id) {
+      return bases.get(id) ?? null;
+    },
+    async saveBase(id, base) {
+      bases.set(id, base);
+    },
+    async fetchPage(id, knownRev) {
+      guard();
+      const page = current(id);
+      if (!page) return { kind: 'missing' };
+      if (page.rev === knownRev) return { kind: 'unchanged' };
+      return { kind: 'found', ...page };
+    },
+    async putPage(id, body, condition) {
+      guard();
+      const page = current(id);
+      const ok = condition === 'absent' ? !page : page !== null && page.rev === condition.rev;
+      if (!ok) return { kind: 'conflict', current: page };
+      const rev = (page?.rev ?? 0) + 1;
+      bodies.set(id, body);
+      revs.set(id, rev);
+      return { kind: 'saved', rev };
     },
   };
 
-  return { store, state, peek: () => ({ tree, bodies }) };
+  /** Запись с другого устройства — прямо на «сервер», мимо нашей очереди. */
+  const writeFromElsewhere = (id: PageId, body: string) => {
+    bodies.set(id, body);
+    revs.set(id, (revs.get(id) ?? 0) + 1);
+  };
+
+  return { store, state, writeFromElsewhere, peek: () => ({ tree, bodies, revs, bases }) };
 }
 
 const дерево = (title: string): Tree => ({
@@ -61,14 +104,18 @@ describe('синхронизация с сервером', () => {
     const baseId = `база-${++seq}`;
     const outbox = createOutbox(baseId);
     const states: SyncState[] = [];
-    const store = createSyncingStore(
-      local.store,
-      remote.store,
+    const rescues = createRescues(baseId);
+    const store = createSyncingStore({
+      local: local.store,
+      remote: remote.store,
       outbox,
-      (s) => states.push(s),
+      rescues,
+      onState: (s) => states.push(s),
       timing,
-    );
-    return { local, remote, outbox, states, store, baseId };
+    });
+    const changes: PageChange[] = [];
+    store.subscribe((change) => changes.push(change));
+    return { local, remote, outbox, states, store, baseId, rescues, changes };
   }
 
   it('запись попадает и локально, и на сервер', async () => {
@@ -155,11 +202,11 @@ describe('синхронизация с сервером', () => {
     const { local, remote, store, outbox } = setup();
     // Первая запись страницы «висит» в сети, пока её не отпустят.
     let release!: () => void;
-    const original = remote.store.saveBody;
-    remote.store.saveBody = (id, body) => {
-      remote.store.saveBody = original;
-      return new Promise<void>((resolve) => {
-        release = () => void original(id, body).then(resolve);
+    const original = remote.store.putPage;
+    remote.store.putPage = (id, body, condition) => {
+      remote.store.putPage = original;
+      return new Promise((resolve) => {
+        release = () => void original(id, body, condition).then(resolve);
       });
     };
 
@@ -180,7 +227,7 @@ describe('синхронизация с сервером', () => {
 
   it('отправки идут по одному, без дублей', async () => {
     const { remote, store } = setup();
-    const saveBody = vi.spyOn(remote.store, 'saveBody');
+    const saveBody = vi.spyOn(remote.store, 'putPage');
     await store.saveBody('p1', 'a');
     await store.saveBody('p2', 'b');
     await store.saveBody('p3', 'c');
@@ -217,7 +264,7 @@ describe('синхронизация с сервером', () => {
 
     it('ждёт паузы в правках', async () => {
       const { remote, store } = setup(timing);
-      const saveBody = vi.spyOn(remote.store, 'saveBody');
+      const saveBody = vi.spyOn(remote.store, 'putPage');
       await store.saveBody('p1', 'a');
       await vi.advanceTimersByTimeAsync(400);
       await store.saveBody('p1', 'ab');
@@ -231,7 +278,7 @@ describe('синхронизация с сервером', () => {
 
     it('при непрерывных правках отправляет не реже pushInterval', async () => {
       const { remote, store } = setup(timing);
-      const saveBody = vi.spyOn(remote.store, 'saveBody');
+      const saveBody = vi.spyOn(remote.store, 'putPage');
       for (let i = 1; i <= 10; i++) {
         await store.saveBody('p1', `v${i}`);
         await vi.advanceTimersByTimeAsync(300);
@@ -243,7 +290,7 @@ describe('синхронизация с сервером', () => {
 
     it('отправляет не чаще pushInterval, как бы часто ни писал редактор', async () => {
       const { remote, store } = setup(timing);
-      const saveBody = vi.spyOn(remote.store, 'saveBody');
+      const saveBody = vi.spyOn(remote.store, 'putPage');
       // Редактор пишет то чаще, то реже задержки отправки — темп не важен.
       const gaps = [700, 200, 700, 200, 700, 200, 700, 200, 700, 200];
       for (const [i, gap] of gaps.entries()) {
@@ -273,6 +320,146 @@ describe('синхронизация с сервером', () => {
       store.setBackground(true);
       await vi.advanceTimersByTimeAsync(0);
       expect(remote.peek().bodies.get('p1')).toBe('отложено');
+    });
+  });
+
+  describe('версии страниц', () => {
+    const текст = ['# Поездка', '', 'Билеты до пятницы.', '', 'Отель забронирован.'].join('\n');
+
+    /** Страница уже на сервере и пришла на устройство: у копии есть базовая версия. */
+    async function opened() {
+      const ctx = setup();
+      ctx.remote.writeFromElsewhere('p1', текст);
+      expect(await ctx.store.loadBody('p1')).toBe(текст);
+      return ctx;
+    }
+
+    it('новая страница создаётся, дальше пишется от своей версии', async () => {
+      const { remote, local, store } = setup();
+      await store.saveBody('p1', 'раз');
+      await store.drain();
+      expect(remote.peek().revs.get('p1')).toBe(1);
+      expect(local.peek().bases.get('p1')).toEqual({ rev: 1, text: 'раз' });
+
+      await store.saveBody('p1', 'два');
+      await store.drain();
+      expect(remote.peek().bodies.get('p1')).toBe('два');
+      expect(remote.peek().revs.get('p1')).toBe(2);
+    });
+
+    it('правки в разных местах с двух устройств сливаются без шума', async () => {
+      const { remote, local, store, changes, rescues } = await opened();
+      remote.writeFromElsewhere('p1', текст.replace('# Поездка', '# Поездка в Казань'));
+
+      await store.saveBody('p1', текст.replace('до пятницы', 'до четверга'));
+      await store.drain();
+
+      const ожидаемое = текст.replace('# Поездка', '# Поездка в Казань').replace('до пятницы', 'до четверга');
+      expect(remote.peek().bodies.get('p1')).toBe(ожидаемое);
+      expect(local.peek().bodies.get('p1')).toBe(ожидаемое);
+      expect(changes).toEqual([
+        { id: 'p1', before: текст.replace('до пятницы', 'до четверга'), after: ожидаемое, conflict: false },
+      ]);
+      expect(rescues.list()).toEqual([]);
+    });
+
+    it('одно место правили по-разному — остаётся чужое, своё спасено', async () => {
+      const { remote, local, store, changes, rescues, outbox } = await opened();
+      const чужое = текст.replace('до пятницы', 'до субботы');
+      const моё = текст.replace('до пятницы', 'до четверга');
+      remote.writeFromElsewhere('p1', чужое);
+
+      await store.saveBody('p1', моё);
+      await store.drain();
+
+      expect(remote.peek().bodies.get('p1')).toBe(чужое);
+      expect(local.peek().bodies.get('p1')).toBe(чужое);
+      expect(changes).toEqual([{ id: 'p1', before: моё, after: чужое, conflict: true }]);
+      expect(rescues.list().map((r) => [r.id, r.text])).toEqual([['p1', моё]]);
+      expect(outbox.isEmpty()).toBe(true);
+    });
+
+    it('спасённую версию можно вернуть — она ложится поверх', async () => {
+      const { remote, store, rescues } = await opened();
+      remote.writeFromElsewhere('p1', текст.replace('до пятницы', 'до субботы'));
+      const моё = текст.replace('до пятницы', 'до четверга');
+      await store.saveBody('p1', моё);
+      await store.drain();
+
+      await store.restoreRescue('p1');
+      await store.drain();
+      expect(remote.peek().bodies.get('p1')).toBe(моё);
+      expect(rescues.list()).toEqual([]);
+    });
+
+    it('спасённую версию можно забыть', async () => {
+      const { remote, store, rescues } = await opened();
+      remote.writeFromElsewhere('p1', текст.replace('до пятницы', 'до субботы'));
+      await store.saveBody('p1', текст.replace('до пятницы', 'до четверга'));
+      await store.drain();
+
+      store.dismissRescue('p1');
+      expect(rescues.list()).toEqual([]);
+    });
+
+    it('страница, записанная до появления версий, пишется поверх, как раньше', async () => {
+      const { remote, local, store } = setup();
+      remote.peek().bodies.set('p1', 'старое'); // версия 0, на устройстве базы нет
+      await local.store.saveBody('p1', 'правка до обновления');
+
+      await store.saveBody('p1', 'правка до обновления');
+      await store.drain();
+      expect(remote.peek().bodies.get('p1')).toBe('правка до обновления');
+      expect(remote.peek().revs.get('p1')).toBe(1);
+    });
+
+    it('удалённую на другом устройстве страницу правка создаёт заново', async () => {
+      const { remote, store } = await opened();
+      await remote.store.deleteBodies(['p1']);
+      await store.saveBody('p1', 'не потерять');
+      await store.drain();
+      expect(remote.peek().bodies.get('p1')).toBe('не потерять');
+    });
+
+    it('открытие неизменённой страницы не тянет её заново', async () => {
+      const { remote, store } = await opened();
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+      expect(await store.loadBody('p1')).toBe(текст);
+      expect(await fetch.mock.results[0]!.value).toEqual({ kind: 'unchanged' });
+    });
+
+    it('нет на сервере — локальный текст не затирается пустым', async () => {
+      const { local, store } = setup();
+      await local.store.saveBody('p1', 'только здесь');
+      expect(await store.loadBody('p1')).toBe('только здесь');
+      expect(local.peek().bodies.get('p1')).toBe('только здесь');
+    });
+
+    it('сверка подтягивает правку с другого устройства', async () => {
+      const { remote, local, store, changes } = await opened();
+      const чужое = текст.replace('Отель', 'Хостел');
+      remote.writeFromElsewhere('p1', чужое);
+
+      await store.refreshPage('p1');
+      expect(local.peek().bodies.get('p1')).toBe(чужое);
+      expect(changes).toEqual([{ id: 'p1', before: текст, after: чужое, conflict: false }]);
+
+      await store.refreshPage('p1');
+      expect(changes).toHaveLength(1); // не изменилась — тихо
+    });
+
+    it('сверка не трогает неотправленную правку — её сверит отправка', async () => {
+      const { remote, local, store, changes } = await opened();
+      remote.state.offline = true;
+      await store.saveBody('p1', 'моё, ещё не ушло');
+      remote.state.offline = false;
+      remote.writeFromElsewhere('p1', текст.replace('Отель', 'Хостел'));
+
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+      await store.refreshPage('p1');
+      expect(fetch).not.toHaveBeenCalled();
+      expect(changes.filter((c) => c.id === 'p1' && c.after === 'моё, ещё не ушло')).toEqual([]);
+      expect(local.peek().bodies.get('p1')).not.toBe(текст.replace('Отель', 'Хостел'));
     });
   });
 });
