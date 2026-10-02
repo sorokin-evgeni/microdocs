@@ -4,7 +4,7 @@
 
 - Требования — [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
 - Что уже сделано и что нет — [docs/PROGRESS.md](docs/PROGRESS.md)
-- Приложения для Android и Mac — [docs/APPS.md](docs/APPS.md)
+- Приложения для Android, Mac, iPhone и iPad — [docs/APPS.md](docs/APPS.md)
 
 ## Запуск
 
