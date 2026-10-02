@@ -132,4 +132,10 @@ describe('фоновая закачка страниц по ссылкам', () 
     );
     expect(store.prefetchPages).toHaveBeenCalledWith(['ccc']);
   });
+
+  it('вложенные страницы качаются вместе со ссылками, без повторов', async () => {
+    const store = fakeStore('[план](microdocs:page/aaa)');
+    renderHook(() => usePageBody(store, 'p1', ['kid1', 'aaa', 'kid2']));
+    await waitFor(() => expect(store.prefetchPages).toHaveBeenCalledWith(['aaa', 'kid1', 'kid2']));
+  });
 });

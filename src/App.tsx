@@ -98,7 +98,11 @@ export function App() {
 
   const base = useBase(store, pageFromLocation);
   usePageUrl(base.tree, base.selectedId, base.select);
-  const page = usePageBody(store, base.selectedId);
+  const page = usePageBody(
+    store,
+    base.selectedId,
+    (base.tree && base.selectedId && findNode(base.tree, base.selectedId)?.children.map((c) => c.id)) || [],
+  );
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
     useDisclosure(false);
   const [movingId, setMovingId] = useState<PageId | null>(null);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PageId } from '../types';
 import type { SyncingStore } from '../storage/syncingStore';
 import { merge3 } from '../domain/merge';
@@ -24,14 +24,29 @@ export const REFRESHING_AFTER = 400;
  * Открывается мгновенно: если копия на устройстве есть, она показывается
  * сразу, а сверка с сервером идёт следом. Пока сверка тянется дольше
  * REFRESHING_AFTER, `refreshing` — повод показать «Обновляется…».
- * Следом в фоне скачиваются страницы, на которые открытая ссылается.
+ * Следом в фоне скачиваются страницы, на которые открытая ссылается,
+ * и вложенные в неё (`children`): туда переходят чаще всего.
  *
  * Страница может поменяться и не из редактора: пришла новее с сервера или
  * слилась с чужой правкой. Тогда растёт `revision` — редактор по нему
  * подменяет содержимое. При возврате на вкладку и появлении связи
  * страница сверяется с сервером.
  */
-export function usePageBody(store: BodyStore, pageId: PageId | null) {
+export function usePageBody(
+  store: BodyStore,
+  pageId: PageId | null,
+  children: PageId[] = [],
+) {
+  // Список вложенных пересоздаётся на каждой отрисовке — держим последний
+  // в ref, чтобы не перезапускать из-за него открытие страницы.
+  const childrenRef = useRef(children);
+  childrenRef.current = children;
+  const prefetchFor = useCallback(
+    (text: string) =>
+      store.prefetchPages([...new Set([...linkedPageIds(text), ...childrenRef.current])]),
+    [store],
+  );
+
   const [body, setBody] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,14 +96,14 @@ export function usePageBody(store: BodyStore, pageId: PageId | null) {
       const checked = stale ? revalidate(pageId, () => !cancelled) : Promise.resolve();
       void checked
         .then(() => store.openPage(pageId))
-        .then(({ body: current }) => store.prefetchPages(linkedPageIds(current)));
+        .then(({ body: current }) => prefetchFor(current));
     });
 
     return () => {
       cancelled = true;
       clearTimeout(slow);
     };
-  }, [store, pageId, flush, revalidate]);
+  }, [store, pageId, flush, revalidate, prefetchFor]);
 
   // Страница поменялась не из редактора.
   useEffect(() => {
@@ -108,9 +123,9 @@ export function usePageBody(store: BodyStore, pageId: PageId | null) {
       setRevision((r) => r + 1);
       if (next !== change.after) schedule(pageId, next);
       // В пришедшем тексте могли появиться новые ссылки.
-      void store.prefetchPages(linkedPageIds(next));
+      void prefetchFor(next);
     });
-  }, [store, pageId, pending, discard, schedule]);
+  }, [store, pageId, pending, discard, schedule, prefetchFor]);
 
   // Вернулись на вкладку или появилась связь — вдруг страницу правили в другом месте.
   useEffect(() => {
