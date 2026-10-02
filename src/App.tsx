@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   AppShell,
@@ -31,6 +31,8 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { Brand } from './components/Brand';
 import { ArchiveSection } from './components/ArchiveSection';
 import { ConflictNotices } from './components/ConflictNotices';
+import { PullIndicator } from './components/PullIndicator';
+import { usePullToRefresh } from './state/usePullToRefresh';
 import { Editor } from './components/Editor';
 import { ancestorIds, findNode, subtreeIds } from './domain/tree';
 import type { PageId, TreeNode } from './types';
@@ -104,6 +106,23 @@ export function App() {
     base.selectedId,
     (base.tree && base.selectedId && findNode(base.tree, base.selectedId)?.children.map((c) => c.id)) || [],
   );
+  // Потянули вниз в самом верху страницы — сверяемся с сервером: дерево,
+  // открытая страница, досылка неотправленного, новая версия приложения.
+  // Не меньше полсекунды, иначе кружок мелькнёт и непонятно, было ли что.
+  const refreshAll = useCallback(async () => {
+    await Promise.all([
+      store.refreshTree(),
+      base.selectedId ? store.refreshPage(base.selectedId) : null,
+      store.drain(),
+      navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 500)),
+    ]);
+  }, [store, base.selectedId]);
+  // Список страниц и открытые окна прокручиваются сами — жест там не наш.
+  const pull = usePullToRefresh(refreshAll, (target) =>
+    Boolean(target.closest('.mantine-AppShell-navbar, [role="dialog"], [data-portal]')),
+  );
+
   const [navOpened, { toggle: toggleNav, close: closeNav }] =
     useDisclosure(false);
   const [movingId, setMovingId] = useState<PageId | null>(null);
@@ -235,6 +254,7 @@ export function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
+        <PullIndicator {...pull} />
         {page.refreshing && (
           <Group
             gap={6}

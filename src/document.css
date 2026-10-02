@@ -8,6 +8,15 @@
  * своего текста. Колонка 640px — около 70 знаков в строке.
  */
 
+/*
+ * «Потяни, чтобы обновить» у приложения своё (usePullToRefresh): системное
+ * перезагрузило бы страницу целиком, да ещё и вдобавок к нашему.
+ */
+html,
+body {
+  overscroll-behavior-y: contain;
+}
+
 :root {
   --doc-font: 'Inter Variable', var(--mantine-font-family);
   --doc-mono: var(--mantine-font-family-monospace);
