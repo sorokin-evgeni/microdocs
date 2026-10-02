@@ -213,11 +213,16 @@ export function App() {
               />
             )}
           </div>
-        ) : (
+        ) : base.unavailable ? (
+          <Text size="sm" c="dimmed" p="md">
+            Нет связи, а на этом устройстве базы ещё нет. Загрузится, когда связь
+            появится.
+          </Text>
+        ) : base.tree ? (
           <Text size="sm" c="dimmed" p="md">
             Выбери страницу слева или создай новую.
           </Text>
-        )}
+        ) : null}
       </AppShell.Main>
 
       {base.tree && (

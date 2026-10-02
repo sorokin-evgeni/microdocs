@@ -11,6 +11,14 @@ export interface SyncingStore extends PageStore {
 
 type Outbox = ReturnType<typeof createOutbox>;
 
+/** Сервер недоступен, а на этом устройстве базы ещё нет: есть ли она — неизвестно. */
+export class BaseUnavailableError extends Error {
+  constructor() {
+    super('База недоступна: нет связи, а на устройстве копии нет');
+    this.name = 'BaseUnavailableError';
+  }
+}
+
 /**
  * Локальное хранилище — основное: чтение и правка работают без сети (FR-31).
  * Записи уходят на сервер следом; неотправленное копится в очереди и уезжает,
@@ -28,6 +36,11 @@ export function createSyncingStore(
   const report = (state: SyncState) => onState(state);
 
   async function push(entry: OutboxEntry): Promise<void> {
+    // Поколение — до чтения значения: правка, сделанная пока идёт запрос,
+    // его сменит, и запись останется в очереди до следующего прохода.
+    const generation = outbox.generation(entry);
+    if (generation === undefined) return;
+
     if (entry === 'tree') {
       const tree = await local.loadTree();
       if (tree) await remote.saveTree(tree);
@@ -37,24 +50,51 @@ export function createSyncingStore(
     } else {
       await remote.deleteBodies([entry.slice('del:'.length)]);
     }
-    outbox.remove(entry);
+    outbox.remove(entry, generation);
   }
 
-  async function drain(): Promise<void> {
+  /** Один проход по очереди; false — связь оборвалась. */
+  async function drainOnce(): Promise<boolean> {
     if (outbox.isEmpty()) {
       report('синхронизировано');
-      return;
+      return true;
     }
+
     report('ожидает отправки');
     for (const entry of outbox.list()) {
       try {
         await push(entry);
       } catch {
         report('нет связи');
-        return;
+        return false;
       }
     }
     report(outbox.isEmpty() ? 'синхронизировано' : 'ожидает отправки');
+    return true;
+  }
+
+  // Проходы идут по одному: иначе каждая правка запускала бы свой
+  // и одно и то же уезжало бы на сервер несколько раз.
+  let running: Promise<void> | null = null;
+  let again = false;
+
+  function drain(): Promise<void> {
+    if (running) {
+      again = true;
+      return running;
+    }
+    running = (async () => {
+      try {
+        let ok: boolean;
+        do {
+          again = false;
+          ok = await drainOnce();
+        } while (ok && again);
+      } finally {
+        running = null;
+      }
+    })();
+    return running;
   }
 
   /** Запись не должна ждать сеть: сначала локально, отправка следом (FR-38). */
@@ -67,21 +107,30 @@ export function createSyncingStore(
   return {
     async loadTree() {
       // Есть неотправленное — локальное свежее, с сервера тянуть нельзя.
+      // Но если локально дерева нет, сервер — единственный источник.
       if (!outbox.isEmpty()) {
-        void drain();
-        return local.loadTree();
+        const tree = await local.loadTree();
+        if (tree) {
+          void drain();
+          return tree;
+        }
       }
+
+      let tree: Tree | null;
       try {
-        const tree = await remote.loadTree();
-        if (tree) await local.saveTree(tree);
-        report('синхронизировано');
-        return tree ?? (await local.loadTree());
+        tree = await remote.loadTree();
       } catch {
         report('нет связи');
-        return local.loadTree();
+        // null здесь значил бы «базы нет», и её создали бы заново поверх
+        // настоящей. Не знаем — так и говорим.
+        const cached = await local.loadTree();
+        if (!cached) throw new BaseUnavailableError();
+        return cached;
       }
+      if (tree) await local.saveTree(tree);
+      report('синхронизировано');
+      return tree ?? (await local.loadTree());
     },
-
     async saveTree(tree: Tree) {
       await local.saveTree(tree);
       enqueue('tree');

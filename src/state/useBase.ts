@@ -28,12 +28,17 @@ import {
  * успел бы отложить старое дерево и затереть им результат следующей структурной
  * операции. Структурные операции дописывают запись немедленно.
  */
+/** Через сколько повторить загрузку, если база не загрузилась. */
+export const RETRY_DELAY = 5000;
+
 export function useBase(
   store: PageStore,
   pickInitial: (tree: Tree) => PageId | null = (tree) => tree.roots[0]?.id ?? null,
 ) {
   const [tree, setTree] = useState<Tree | null>(null);
   const [selectedId, setSelectedId] = useState<PageId | null>(null);
+  /** База не загрузилась: нет связи и нет копии на устройстве. */
+  const [unavailable, setUnavailable] = useState(false);
 
   const saveTree = useCallback(
     (_key: string, value: Tree) => void store.saveTree(value),
@@ -43,11 +48,22 @@ export function useBase(
 
   useEffect(() => {
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
 
-    void (async () => {
-      const loaded = await store.loadTree();
+    const load = async () => {
+      let loaded: Tree | null;
+      try {
+        loaded = await store.loadTree();
+      } catch {
+        // Есть ли база, неизвестно — создавать новую нельзя, затрём настоящую.
+        // Ждём связи и пробуем снова.
+        if (cancelled) return;
+        setUnavailable(true);
+        retry = setTimeout(() => void load(), RETRY_DELAY);
+        return;
+      }
       if (cancelled) return;
-
+      setUnavailable(false);
       if (loaded) {
         setTree(loaded);
         setSelectedId(pickInitial(loaded));
@@ -62,10 +78,12 @@ export function useBase(
       if (cancelled) return;
       setTree(fresh);
       setSelectedId(pickInitial(fresh));
-    })();
+    };
 
+    void load();
     return () => {
       cancelled = true;
+      if (retry !== null) clearTimeout(retry);
     };
   }, [store]);
 
@@ -176,6 +194,7 @@ export function useBase(
 
   return {
     tree,
+    unavailable,
     selectedId,
     select: setSelectedId,
     createPage,

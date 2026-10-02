@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { PageStore } from '../storage/pageStore';
 import type { PageId, Tree } from '../types';
-import { useBase } from './useBase';
+import { RETRY_DELAY, useBase } from './useBase';
 
 /**
  * Первая страница — не родитель архивируемой ветки, иначе переход
@@ -61,5 +61,31 @@ describe('архивирование открытой страницы', () => {
     const base = await open('c');
     act(() => base.current.archivePage('d'));
     expect(base.current.selectedId).toBe('c');
+  });
+});
+
+describe('загрузка без сети', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('не создаёт новую базу, а ждёт связи', async () => {
+    vi.useFakeTimers();
+    let online = false;
+    const saveTree = vi.fn(() => Promise.resolve());
+    const flaky: PageStore = {
+      ...store,
+      saveTree,
+      loadTree: () => (online ? Promise.resolve(tree) : Promise.reject(new Error('нет сети'))),
+    };
+
+    const { result } = renderHook(() => useBase(flaky, () => 'd'));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current.unavailable).toBe(true);
+    expect(result.current.tree).toBeNull();
+
+    online = true;
+    await act(() => vi.advanceTimersByTimeAsync(RETRY_DELAY));
+    expect(result.current.unavailable).toBe(false);
+    expect(result.current.tree).toEqual(tree);
+    expect(saveTree).not.toHaveBeenCalled();
   });
 });
