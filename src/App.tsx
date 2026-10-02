@@ -52,10 +52,23 @@ export function App() {
   );
 
   // Связь вернулась — досылаем накопившееся (FR-32).
+  // Ушли в фон или закрываемся — отправляем без отсрочки: таймер может не дожить.
   useEffect(() => {
     const drain = () => void store.drain();
+    const onVisibility = () => store.setBackground(document.visibilityState === 'hidden');
+    const onPageHide = () => store.setBackground(true);
+    // Возврат из кеша страниц браузера (bfcache) — снова на переднем плане.
+    const onPageShow = () => store.setBackground(false);
     window.addEventListener('online', drain);
-    return () => window.removeEventListener('online', drain);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      window.removeEventListener('online', drain);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
   }, [store]);
 
   const base = useBase(store, pageFromLocation);

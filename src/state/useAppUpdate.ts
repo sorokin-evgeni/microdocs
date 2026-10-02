@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AUTOSAVE_DELAY } from './useAutosave';
+import { LOCAL_SAVE_DELAY } from './useAutosave';
 
 /**
  * Новая версия интерфейса. Service worker скачивает её в фоне и ждёт;
@@ -48,7 +48,7 @@ export function useAppUpdate(): (() => void) | null {
       once: true,
     });
     // Правка, набранная перед нажатием, ещё может ждать записи — даём ей записаться.
-    setTimeout(() => waiting.postMessage('skip-waiting'), AUTOSAVE_DELAY + 400);
+    setTimeout(() => waiting.postMessage('skip-waiting'), LOCAL_SAVE_DELAY + 400);
   }, [waiting]);
 
   return waiting ? apply : null;

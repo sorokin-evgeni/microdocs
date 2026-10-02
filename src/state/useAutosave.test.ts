@@ -8,7 +8,7 @@ describe('отложенное сохранение', () => {
 
   it('не пишет, пока правки идут подряд', () => {
     const save = vi.fn();
-    const { result } = renderHook(() => useAutosave<string>(save, 600));
+    const { result } = renderHook(() => useAutosave<string>(save, 600, 5000));
 
     act(() => {
       result.current.schedule('a', 'раз');
@@ -63,5 +63,52 @@ describe('отложенное сохранение', () => {
 
     unmount();
     expect(save).toHaveBeenCalledWith('a', 'недописанное');
+  });
+
+  it('при непрерывных правках пишет не реже maxWait', () => {
+    const save = vi.fn();
+    const { result } = renderHook(() => useAutosave<string>(save, 300, 1000));
+
+    act(() => {
+      for (let i = 1; i <= 6; i++) {
+        result.current.schedule('a', `v${i}`);
+        vi.advanceTimersByTime(200);
+      }
+    });
+    // Правка каждые 200 мс — тишины в 300 мс не было, а секунда прошла.
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith('a', 'v5');
+  });
+
+  it('уход со вкладки пишет сразу', () => {
+    const save = vi.fn();
+    const { result } = renderHook(() => useAutosave<string>(save, 600));
+    act(() => void result.current.schedule('a', 'недописанное'));
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    visibility.mockRestore();
+
+    expect(save).toHaveBeenCalledWith('a', 'недописанное');
+  });
+
+  it('закрытие страницы пишет сразу', () => {
+    const save = vi.fn();
+    const { result } = renderHook(() => useAutosave<string>(save, 600));
+    act(() => void result.current.schedule('a', 'недописанное'));
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(save).toHaveBeenCalledWith('a', 'недописанное');
+  });
+
+  it('возврат на вкладку ничего не пишет', () => {
+    const save = vi.fn();
+    const { result } = renderHook(() => useAutosave<string>(save, 600));
+    act(() => void result.current.schedule('a', 'текст'));
+
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(save).not.toHaveBeenCalled();
   });
 });

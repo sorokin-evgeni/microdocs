@@ -14,6 +14,12 @@
       "port": 5199
     },
     {
+      "name": "microdocs-sync-test",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MICRODOCS_DEV_BASE=sync-test", "npx", "vite", "--port", "5198", "--strictPort"],
+      "port": 5198
+    },
+    {
       "name": "typography-lab",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "5180", "--directory", "design"],

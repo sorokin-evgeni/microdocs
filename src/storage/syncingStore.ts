@@ -7,7 +7,24 @@ export type SyncState = 'синхронизировано' | 'ожидает о�
 export interface SyncingStore extends PageStore {
   /** Отправить всё накопившееся. Безопасно звать повторно. */
   drain: () => Promise<void>;
+  /**
+   * Страница ушла в фон или закрывается: отправлять сразу, не откладывая, —
+   * таймер может уже не сработать.
+   */
+  setBackground: (background: boolean) => void;
 }
+
+export interface SyncTiming {
+  /** Сколько ждать тишины перед отправкой. */
+  pushDelay: number;
+  /**
+   * Отправки — не чаще этого. И не реже: правка не ждёт отправки дольше,
+   * даже если правки не прекращаются.
+   */
+  pushInterval: number;
+}
+
+export const DEFAULT_SYNC_TIMING: SyncTiming = { pushDelay: 600, pushInterval: 2000 };
 
 type Outbox = ReturnType<typeof createOutbox>;
 
@@ -32,6 +49,7 @@ export function createSyncingStore(
   remote: PageStore,
   outbox: Outbox,
   onState: (state: SyncState) => void,
+  timing: SyncTiming = DEFAULT_SYNC_TIMING,
 ): SyncingStore {
   const report = (state: SyncState) => onState(state);
 
@@ -97,11 +115,42 @@ export function createSyncingStore(
     return running;
   }
 
+  // Отправка откладывается, пока правки идут подряд, но не дольше pushInterval,
+  // и уходит не чаще раза в pushInterval. Срок считается от времени, а не от
+  // числа записей: как часто пишет редактор, от темпа набора не зависит.
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let firstPendingAt: number | null = null;
+  let lastPushAt = -Infinity;
+  let background = false;
+
+  function drainNow() {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    firstPendingAt = null;
+    lastPushAt = Date.now();
+    void drain();
+  }
+
+  function scheduleDrain() {
+    if (background) {
+      drainNow();
+      return;
+    }
+    const now = Date.now();
+    firstPendingAt ??= now;
+    const at = Math.max(
+      Math.min(now + timing.pushDelay, firstPendingAt + timing.pushInterval),
+      lastPushAt + timing.pushInterval,
+    );
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(drainNow, at - now);
+  }
+
   /** Запись не должна ждать сеть: сначала локально, отправка следом (FR-38). */
   function enqueue(entry: OutboxEntry) {
     outbox.add(entry);
     report('ожидает отправки');
-    void drain();
+    scheduleDrain();
   }
 
   return {
@@ -159,5 +208,9 @@ export function createSyncingStore(
     },
 
     drain,
+    setBackground(value) {
+      background = value;
+      if (value && !outbox.isEmpty()) drainNow();
+    },
   };
 }
