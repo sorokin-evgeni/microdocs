@@ -15,6 +15,12 @@ export interface SyncingStore extends PageStore {
    * таймер может уже не сработать.
    */
   setBackground: (background: boolean) => void;
+  /**
+   * Открыть страницу без ожидания сети: если на устройстве есть копия,
+   * она отдаётся сразу, а `revalidate` говорит, что её стоит сверить
+   * с сервером (refreshPage). Копии нет — ждём сервер, как раньше.
+   */
+  openPage: (id: PageId) => Promise<{ body: string; revalidate: boolean }>;
   /** Сверить страницу с сервером: вдруг её правили на другом устройстве. */
   refreshPage: (id: PageId) => Promise<void>;
   /** Страница поменялась не из редактора: пришла с сервера или слилась. */
@@ -330,7 +336,7 @@ export function createSyncingStore({
     scheduleDrain();
   }
 
-  return {
+  const store: SyncingStore = {
     async loadTree() {
       // Есть неотправленное — локальное свежее, с сервера тянуть нельзя.
       // Но если локально дерева нет, сервер — единственный источник.
@@ -344,6 +350,12 @@ export function createSyncingStore({
 
       const cached = await local.loadTree();
       const sync = await local.loadTreeSync();
+      // Есть копия, и известно, от какой она версии, — показываем сразу,
+      // а сверку с сервером отправляем следом: новое придёт через subscribeTree.
+      if (cached && sync.rev !== null) {
+        void store.refreshTree();
+        return cached;
+      }
       let fetched;
       try {
         // Версию называем, только если есть и само дерево: иначе «не изменилось»
@@ -441,6 +453,17 @@ export function createSyncingStore({
       }
     },
 
+    async openPage(id) {
+      if (outbox.list().includes(`page:${id}`)) {
+        return { body: await local.loadBody(id), revalidate: false };
+      }
+      const base = await local.loadBase(id);
+      const body = await local.loadBody(id);
+      // Копия с сервера уже была (или осталась от версии без номеров) — её и показываем.
+      if (base || body) return { body, revalidate: true };
+      return { body: await store.loadBody(id), revalidate: false };
+    },
+
     async saveBody(id, body) {
       await local.saveBody(id, body);
       enqueue(`page:${id}`);
@@ -501,4 +524,5 @@ export function createSyncingStore({
       rescues.remove(id);
     },
   };
+  return store;
 }

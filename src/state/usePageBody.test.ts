@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { PageChange } from '../storage/syncingStore';
-import { usePageBody } from './usePageBody';
+import { REFRESHING_AFTER, usePageBody } from './usePageBody';
 
-function fakeStore(initial: string) {
+function fakeStore(initial: string, { cached = true } = {}) {
   const listeners = new Set<(change: PageChange) => void>();
   return {
-    loadBody: vi.fn(() => Promise.resolve(initial)),
+    openPage: vi.fn(() => Promise.resolve({ body: initial, revalidate: cached })),
     saveBody: vi.fn(() => Promise.resolve()),
     refreshPage: vi.fn(() => Promise.resolve()),
     subscribe: (listener: (change: PageChange) => void) => {
@@ -68,5 +68,45 @@ describe('страница поменялась не из редактора', (
     await open(store);
     document.dispatchEvent(new Event('visibilitychange'));
     expect(store.refreshPage).toHaveBeenCalledWith('p1');
+  });
+});
+
+describe('открытие из копии на устройстве', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('копия показывается сразу, сверка с сервером идёт следом', async () => {
+    const store = fakeStore(было);
+    const page = await open(store);
+    expect(page.current.body).toBe(было);
+    expect(store.refreshPage).toHaveBeenCalledWith('p1');
+  });
+
+  it('быстрая сверка индикатор не показывает', async () => {
+    const store = fakeStore(было);
+    const page = await open(store);
+    expect(page.current.refreshing).toBe(false);
+  });
+
+  it('медленная сверка показывает «Обновляется…», пока не закончится', async () => {
+    vi.useFakeTimers();
+    const store = fakeStore(было);
+    let done!: () => void;
+    store.refreshPage.mockImplementation(() => new Promise<void>((resolve) => (done = resolve)));
+    const hook = renderHook(() => usePageBody(store, 'p1'));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(hook.result.current.body).toBe(было);
+    expect(hook.result.current.refreshing).toBe(false);
+
+    await act(() => vi.advanceTimersByTimeAsync(REFRESHING_AFTER));
+    expect(hook.result.current.refreshing).toBe(true);
+
+    await act(async () => done());
+    expect(hook.result.current.refreshing).toBe(false);
+  });
+
+  it('копии нет — сверять нечего, страница уже с сервера', async () => {
+    const store = fakeStore(было, { cached: false });
+    await open(store);
+    expect(store.refreshPage).not.toHaveBeenCalled();
   });
 });

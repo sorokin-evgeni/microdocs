@@ -6,6 +6,7 @@ import {
   Burger,
   Button,
   Group,
+  Loader,
   ScrollArea,
   Text,
 } from '@mantine/core';
@@ -229,6 +230,18 @@ export function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
+        {page.refreshing && (
+          <Group
+            gap={6}
+            wrap="nowrap"
+            style={{ position: 'fixed', top: 10, right: 14, zIndex: 200, pointerEvents: 'none' }}
+          >
+            <Loader size={12} color="gray" />
+            <Text size="xs" c="dimmed">
+              Обновляется…
+            </Text>
+          </Group>
+        )}
         {selected ? (
           <div className="page-column">
             <PageHeader

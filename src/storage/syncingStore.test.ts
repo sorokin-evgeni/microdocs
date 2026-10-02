@@ -598,4 +598,42 @@ describe('синхронизация с сервером', () => {
       expect(remote.peek().treeRev).toBe(1);
     });
   });
+
+  describe('открытие из копии на устройстве', () => {
+    it('страница с копией открывается без сети, сверка — отдельно', async () => {
+      const { remote, store } = setup();
+      remote.writeFromElsewhere('p1', 'было');
+      await store.loadBody('p1'); // первое открытие — копия появилась
+      remote.state.offline = true;
+
+      expect(await store.openPage('p1')).toEqual({ body: 'было', revalidate: true });
+    });
+
+    it('страницы на устройстве нет — ждём сервер', async () => {
+      const { remote, store } = setup();
+      remote.writeFromElsewhere('p1', 'с сервера');
+      const fetch = vi.spyOn(remote.store, 'fetchPage');
+      expect(await store.openPage('p1')).toEqual({ body: 'с сервера', revalidate: false });
+      expect(fetch).toHaveBeenCalled();
+    });
+
+    it('неотправленная правка открывается как есть, без сверки', async () => {
+      const { remote, store } = setup();
+      remote.state.offline = true;
+      await store.saveBody('p1', 'моё');
+      expect(await store.openPage('p1')).toEqual({ body: 'моё', revalidate: false });
+    });
+
+    it('дерево с копией отдаётся сразу, а новое приходит следом', async () => {
+      const { remote, store } = setup();
+      remote.writeTreeFromElsewhere(дерево('Было'));
+      await store.loadTree(); // первый запуск — копия появилась
+      remote.writeTreeFromElsewhere(дерево('Стало'));
+      const trees: Tree[] = [];
+      store.subscribeTree((t) => trees.push(t));
+
+      expect(await store.loadTree()).toEqual(дерево('Было'));
+      await vi.waitFor(() => expect(trees).toEqual([дерево('Стало')]));
+    });
+  });
 });
