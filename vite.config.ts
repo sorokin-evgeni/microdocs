@@ -25,7 +25,7 @@ function apiPlugin(): PluginOption {
           const { createStorage } = await server.ssrLoadModule(
             '/server/storage/index.ts',
           );
-          return createApi(createStorage());
+          return createApi(createStorage(), undefined, { requirePrecondition: true });
         })();
 
         const handleApi = await ready;

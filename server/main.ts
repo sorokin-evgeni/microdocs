@@ -30,7 +30,9 @@ function secureContext() {
   };
 }
 
-const handleApi = createApi(createStorage());
+// Запись — только с версией, от которой правили (If-Match): без неё
+// правка с одного устройства молча затёрла бы правку с другого.
+const handleApi = createApi(createStorage(), undefined, { requirePrecondition: true });
 const serveStatic = createStaticHandler(STATIC_DIR);
 
 const server = createServer(
