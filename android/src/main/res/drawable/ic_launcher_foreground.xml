@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Создано scripts/icons.mjs — правьте там. Знак [[…]] в центре холста 108dp. -->
+<!-- Создано scripts/icons.mjs — правьте там. Знак «#» в центре холста 108dp. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:scaleX="1.08"
-        android:scaleY="1.08"
-        android:translateX="19.44"
-        android:translateY="19.44">
+        android:scaleX="1.1"
+        android:scaleY="1.1"
+        android:translateX="18.80"
+        android:translateY="18.80">
         <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M13.4 16L21.4 16L20.55 20L16.55 20L11.45 44L15.45 44L14.6 48L6.6 48ZM24.4 16L32.4 16L31.55 20L27.55 20L22.45 44L26.45 44L25.6 48L17.6 48ZM38.4 16L46.4 16L39.6 48L31.6 48L32.45 44L36.45 44L41.55 20L37.55 20ZM49.4 16L57.4 16L50.6 48L42.6 48L43.45 44L47.45 44L52.55 20L48.55 20Z" />
+            android:fillColor="#FF0A0A0A"
+            android:pathData="M28.67 14.07L17.62 48.07A3 3 0 0 0 23.33 49.93L34.38 15.93A3 3 0 0 0 28.67 14.07ZM40.67 14.07L29.62 48.07A3 3 0 0 0 35.33 49.93L46.38 15.93A3 3 0 0 0 40.67 14.07ZM15 29L49 29A3 3 0 0 0 49 23L15 23A3 3 0 0 0 15 29ZM15 41L49 41A3 3 0 0 0 49 35L15 35A3 3 0 0 0 15 41Z" />
     </group>
 </vector>
