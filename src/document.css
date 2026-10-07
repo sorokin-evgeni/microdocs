@@ -145,6 +145,8 @@ body {
 
 .md-editor {
   margin-top: 18px;
+  /* Якорь для ручки блока. */
+  position: relative;
 }
 
 .md-editor .ProseMirror {
@@ -354,4 +356,84 @@ body {
   margin: 26px 0;
   border: 0;
   border-top: 1px solid var(--doc-border);
+}
+
+/*
+ * Ручка блока: слева от текста, в поле колонки. «+» и «⋮⋮» по 24px с зазором.
+ * На телефоне поле — 16px, туда влезает только «⋮⋮», и то впритык к краю.
+ */
+.block-handle {
+  position: absolute;
+  left: -54px;
+  display: flex;
+  gap: 2px;
+  z-index: 2;
+  color: var(--doc-muted);
+}
+
+.block-handle[data-touch] {
+  left: -22px;
+}
+
+.block-handle .mantine-ActionIcon-root {
+  color: var(--doc-muted);
+}
+
+/* Слэш-меню */
+
+.slash-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.slash-menu-item[data-selected='true'] {
+  background: var(--mantine-color-default-hover);
+}
+
+.slash-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--doc-border);
+  border-radius: var(--mantine-radius-sm);
+  color: var(--doc-muted);
+  flex: none;
+}
+
+/* Чек-лист: галочка вместо маркера, текст рядом. */
+.md-editor .ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  padding-inline-start: 2px;
+}
+
+.md-editor .ProseMirror ul[data-type='taskList'] li > div > p {
+  margin-bottom: 0;
+}
+
+.md-editor .ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.md-editor .ProseMirror ul[data-type='taskList'] li > label {
+  flex: none;
+  margin-top: 0.2em;
+  user-select: none;
+}
+
+.md-editor .ProseMirror ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.md-editor .ProseMirror ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--doc-muted);
+  text-decoration: line-through;
 }

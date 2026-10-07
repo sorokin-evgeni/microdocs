@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { PageId } from '../types';
 import { editorExtensions, followLink } from './editorSetup';
+import { SlashController } from './slashCommand';
+import { SlashMenu } from './SlashMenu';
+import { BlockHandle } from './BlockHandle';
 
 interface Props {
   /** Смена страницы пересоздаёт редактор, чтобы не смешивать содержимое. */
@@ -26,9 +29,12 @@ export function Editor({ pageId, body, revision = 0, onChange, onOpenPage }: Pro
   const openPage = useRef(onOpenPage);
   openPage.current = onOpenPage;
 
+  const [slash] = useState(() => new SlashController());
+  const box = useRef<HTMLDivElement>(null);
+
   const editor = useEditor(
     {
-      extensions: editorExtensions(),
+      extensions: editorExtensions(slash),
       content: body,
       onUpdate: ({ editor }) => onChange(readMarkdown(editor)),
       editorProps: {
@@ -53,8 +59,10 @@ export function Editor({ pageId, body, revision = 0, onChange, onOpenPage }: Pro
   }, [editor, revision, body]);
 
   return (
-    <div className="md-editor">
+    <div className="md-editor" ref={box}>
+      {editor && <BlockHandle editor={editor} container={box} />}
       <EditorContent editor={editor} />
+      <SlashMenu controller={slash} />
     </div>
   );
 }
