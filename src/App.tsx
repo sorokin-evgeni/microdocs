@@ -21,7 +21,7 @@ import { createRescues } from './storage/rescues';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
 import { useAppUpdate } from './state/useAppUpdate';
-import { pageFromLocation, usePageUrl } from './state/usePageUrl';
+import { initialPage, usePageUrl } from './state/usePageUrl';
 import { PageTree } from './components/PageTree';
 import { MovePageModal } from './components/MovePageModal';
 import { NavbarResizer, useNavbarWidth } from './components/NavbarResizer';
@@ -99,7 +99,7 @@ export function App() {
     };
   }, [store]);
 
-  const base = useBase(store, pageFromLocation);
+  const base = useBase(store, initialPage);
   usePageUrl(base.tree, base.selectedId, base.select);
   const page = usePageBody(
     store,

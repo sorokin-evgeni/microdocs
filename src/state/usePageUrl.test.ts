@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { PageId, Tree } from '../types';
-import { pageFromLocation, usePageUrl } from './usePageUrl';
+import { initialPage, pageFromLocation, usePageUrl } from './usePageUrl';
 
 const tree: Tree = {
   roots: [
@@ -21,6 +21,7 @@ function render(initial: { tree: Tree; selectedId: PageId | null }) {
 beforeEach(() => {
   vi.useFakeTimers();
   window.history.replaceState(null, '', '/');
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -33,6 +34,29 @@ describe('pageFromLocation', () => {
     expect(pageFromLocation(tree)).toBe('b');
     window.history.replaceState(null, '', '/p/udalena-zzz');
     expect(pageFromLocation(tree)).toBe('a');
+  });
+});
+
+describe('initialPage', () => {
+  it('на голом адресе — последняя открытая на этом устройстве', () => {
+    render({ tree, selectedId: 'b' });
+    window.history.replaceState(null, '', '/');
+    expect(initialPage(tree)).toBe('b');
+  });
+
+  it('ссылка на страницу важнее последней открытой', () => {
+    render({ tree, selectedId: 'b' });
+    window.history.replaceState(null, '', '/p/pervaya-a');
+    expect(initialPage(tree)).toBe('a');
+  });
+
+  it('последней открытой больше нет — первая', () => {
+    localStorage.setItem('microdocs:last-page', 'udalena');
+    expect(initialPage(tree)).toBe('a');
+  });
+
+  it('ничего не открывали — первая', () => {
+    expect(initialPage(tree)).toBe('a');
   });
 });
 

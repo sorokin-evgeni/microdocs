@@ -8,6 +8,38 @@ export function pageFromLocation(tree: Tree): PageId | null {
   return pageIdFromPath(tree, window.location.pathname) ?? tree.roots[0]?.id ?? null;
 }
 
+const LAST_PAGE = 'microdocs:last-page';
+
+/**
+ * Страница при запуске. Ссылка на страницу открывает её; голый адрес — запуск
+ * с экрана Домой, из приложения или по закладке на сайт — ту, что была открыта
+ * последней на этом устройстве, а не первую в базе. Последняя могла пропасть
+ * (удалили, в том числе на другом устройстве) — тогда первая.
+ */
+export function initialPage(tree: Tree): PageId | null {
+  const fromPath = pageIdFromPath(tree, window.location.pathname);
+  if (fromPath) return fromPath;
+  const last = readLastPage();
+  if (last && findNode(tree, last)) return last;
+  return tree.roots[0]?.id ?? null;
+}
+
+function readLastPage(): PageId | null {
+  try {
+    return localStorage.getItem(LAST_PAGE);
+  } catch {
+    return null;
+  }
+}
+
+function rememberLastPage(id: PageId) {
+  try {
+    localStorage.setItem(LAST_PAGE, id);
+  } catch {
+    // Без хранилища просто откроется первая страница.
+  }
+}
+
 /**
  * Держит открытую страницу в адресе: после перезагрузки открывается она же,
  * «Назад» и «Вперёд» браузера переключают страницы.
@@ -23,6 +55,10 @@ export function usePageUrl(
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [tree, select]);
+
+  useEffect(() => {
+    if (selectedId) rememberLastPage(selectedId);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!tree) return;
