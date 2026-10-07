@@ -15,6 +15,8 @@ SSH=(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new)
 RSYNC_SSH="ssh -i $SSH_KEY -o StrictHostKeyChecking=accept-new"
 
 echo "== сборка =="
+# Зависимости — ровно по package-lock.json: после pull там могли появиться новые.
+npm ci --no-audit --no-fund
 npm run build
 
 echo "== выкладка на $HOST =="
