@@ -93,10 +93,13 @@ PORT=8443 npm start
 **Владелец определяется по CN клиентского сертификата** — он же имя базы в хранилище.
 В запросах база не называется, попросить чужую нельзя. Отсюда же берётся
 мультитенантность: один сертификат — один человек — своя база.
+Выдать и отозвать доступ — `npm run registerUser` / `npm run revokeUser`
+([docs/DEPLOY.md](docs/DEPLOY.md#выдать-доступ)).
 
 Переменные: `MICRODOCS_TLS_KEY`, `MICRODOCS_TLS_CERT`, `MICRODOCS_CLIENT_CA`,
-`PORT`, `MICRODOCS_STATIC`, `MICRODOCS_BACKEND`, `MICRODOCS_S3_BUCKET`.
-При продлении серверного сертификата достаточно послать процессу `SIGHUP`.
+`MICRODOCS_REVOKED`, `PORT`, `MICRODOCS_STATIC`, `MICRODOCS_BACKEND`, `MICRODOCS_S3_BUCKET`.
+При продлении серверного сертификата, новом центре клиентов или отзыве
+достаточно послать процессу `SIGHUP`.
 
 В разработке TLS нет, поэтому владелец берётся из `MICRODOCS_DEV_BASE`
 (по умолчанию `default`).

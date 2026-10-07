@@ -10,6 +10,8 @@
     "build:server": "esbuild server/main.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/main.js",
     "start": "node dist-server/main.js",
     "certs:dev": "bash scripts/dev-certs.sh",
+    "registerUser": "bash scripts/registerUser.sh",
+    "revokeUser": "bash scripts/revokeUser.sh",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
