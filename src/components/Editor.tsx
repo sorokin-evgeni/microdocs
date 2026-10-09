@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { PageId } from '../types';
 import { editorExtensions, followLink } from './editorSetup';
@@ -18,13 +18,20 @@ interface Props {
   onChange: (markdown: string) => void;
   /** Переход по ссылке на другую страницу базы. */
   onOpenPage: (id: PageId) => void;
+  /** Команды редактору снаружи — например, из заголовка страницы. */
+  handle?: Ref<EditorHandle>;
+}
+
+export interface EditorHandle {
+  /** Пустая строка в начале документа и курсор в ней — Enter в заголовке. */
+  startNewLine: () => void;
 }
 
 /**
  * Редактор показывает готовый текст, а хранит Markdown (FR-19).
  * Разметка применяется по ходу набора силами StarterKit (FR-20).
  */
-export function Editor({ pageId, body, revision = 0, onChange, onOpenPage }: Props) {
+export function Editor({ pageId, body, revision = 0, onChange, onOpenPage, handle }: Props) {
   // Редактор создаётся раз на страницу, а обработчик у родителя может смениться.
   const openPage = useRef(onOpenPage);
   openPage.current = onOpenPage;
@@ -44,6 +51,23 @@ export function Editor({ pageId, body, revision = 0, onChange, onOpenPage }: Pro
       },
     },
     [pageId],
+  );
+
+  useImperativeHandle(
+    handle,
+    () => ({
+      startNewLine: () => {
+        if (!editor) return;
+        // Пустой первый абзац уже и есть пустая строка — второй не нужен.
+        const first = editor.state.doc.firstChild;
+        const chain = editor.chain();
+        if (!(first?.type.name === 'paragraph' && first.content.size === 0)) {
+          chain.insertContentAt(0, { type: 'paragraph' });
+        }
+        chain.setTextSelection(1).focus().run();
+      },
+    }),
+    [editor],
   );
 
   // Подмена без события обновления: это не правка, писать её обратно незачем.

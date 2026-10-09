@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
   AppShell,
@@ -33,7 +33,7 @@ import { ArchiveSection } from './components/ArchiveSection';
 import { ConflictNotices } from './components/ConflictNotices';
 import { PullIndicator } from './components/PullIndicator';
 import { usePullToRefresh } from './state/usePullToRefresh';
-import { Editor } from './components/Editor';
+import { Editor, type EditorHandle } from './components/Editor';
 import { ancestorIds, findNode, subtreeIds } from './domain/tree';
 import type { PageId, TreeNode } from './types';
 
@@ -49,6 +49,7 @@ export function App() {
   // Новая версия приложения перестраивает локальную базу; пока в другой
   // вкладке открыта старая, перестройка ждёт — без объяснения это пустой экран.
   const [dbBlocked, setDbBlocked] = useState(false);
+  const editorHandle = useRef<EditorHandle>(null);
 
   const rescues = useMemo(() => createRescues(LOCAL_CACHE_ID), []);
   const store = useMemo(
@@ -277,6 +278,7 @@ export function App() {
               title={selected.title}
               icon={selected.icon}
               onRename={(title) => base.renamePage(selected.id, title)}
+              onEnter={() => editorHandle.current?.startNewLine()}
               onIconChange={(icon) => base.setPageIcon(selected.id, icon)}
               onCreateChild={() => void base.createPage(selected.id)}
               onMove={() => setMovingId(selected.id)}
@@ -290,6 +292,7 @@ export function App() {
                 revision={page.revision}
                 onChange={page.change}
                 onOpenPage={handleOpenPage}
+                handle={editorHandle}
               />
             )}
           </div>

@@ -7,6 +7,8 @@ interface Props {
   title: string;
   icon: string | undefined;
   onRename: (title: string) => void;
+  /** Enter в названии: перейти к тексту страницы. */
+  onEnter?: () => void;
   onIconChange: (icon: string | null) => void;
   onCreateChild: () => void;
   onMove: () => void;
@@ -27,6 +29,11 @@ export function PageHeader(props: Props) {
         <TextInput
           value={props.title}
           onChange={(event) => props.onRename(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.nativeEvent.isComposing || !props.onEnter) return;
+            event.preventDefault();
+            props.onEnter();
+          }}
           placeholder="Без названия"
           variant="unstyled"
           classNames={{ input: 'page-title' }}

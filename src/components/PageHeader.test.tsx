@@ -12,6 +12,7 @@ beforeEach(() => {
 function setup(icon?: string) {
   const handlers = {
     onRename: vi.fn(),
+    onEnter: vi.fn(),
     onIconChange: vi.fn(),
     onCreateChild: vi.fn(),
     onMove: vi.fn(),
@@ -23,6 +24,13 @@ function setup(icon?: string) {
 }
 
 describe('PageHeader', () => {
+  it('Enter в названии переводит к тексту страницы', async () => {
+    const user = userEvent.setup();
+    const handlers = setup();
+    await user.type(screen.getByRole('textbox', { name: 'Заголовок страницы' }), '{Enter}');
+    expect(handlers.onEnter).toHaveBeenCalledTimes(1);
+  });
+
   it('на виду — «Вложенная» и «В архив», остальное в меню', () => {
     setup();
     for (const name of ['Добавить вложенную', 'Архивировать', 'Ещё действия']) {
