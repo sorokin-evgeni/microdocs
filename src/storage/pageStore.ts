@@ -75,4 +75,6 @@ export interface RemoteStore extends PageStore {
   putPage(id: PageId, body: string, condition: PutCondition): Promise<PutResult>;
   fetchTree(knownRev: number | null): Promise<FetchedTree>;
   putTree(tree: Tree, condition: PutCondition): Promise<PutTreeResult>;
+  /** Загруженная картинка; путь — внутри вложений базы (shared/uploads.ts). */
+  putAsset(path: string, blob: Blob): Promise<void>;
 }

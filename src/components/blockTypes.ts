@@ -91,6 +91,13 @@ export const BLOCK_TYPES: BlockType[] = [
     apply: (c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }),
   },
   {
+    id: 'image',
+    label: 'Картинка',
+    keywords: ['image', 'picture', 'photo', 'img', 'картинка', 'изображение', 'фото'],
+    insertOnly: true,
+    apply: (c) => c.pickImage(),
+  },
+  {
     id: 'horizontalRule',
     label: 'Разделитель',
     hint: '---',

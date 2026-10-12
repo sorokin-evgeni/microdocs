@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
-import { DOMParser } from '@tiptap/pm/model';
-import { editorExtensions } from './editorSetup';
+import { DOMParser, Slice } from '@tiptap/pm/model';
+import { editorExtensions, type UploadImage } from './editorSetup';
 
 const PAGE = '[Билеты](microdocs:page/6c55bbc7-0ee5-4667-af33-bb8a02be42ba)';
 const ASSET = '[Ticket.pdf](microdocs:asset/buildin/5f5480991b6d/Ticket.pdf)';
@@ -91,6 +91,55 @@ describe('картинки в редакторе', () => {
     e.view.dispatch(e.state.tr.replaceWith(0, e.state.doc.content.size, pasted.content));
 
     expect(markdownOf(e)).toBe('![x](microdocs:asset/buildin/5f54/image.png)');
+  });
+});
+
+describe('загрузка картинок', () => {
+  const HASH = 'a'.repeat(64);
+
+  function withUpload(upload: UploadImage, body = 'Текст') {
+    editor = new Editor({ extensions: editorExtensions(undefined, upload), content: body });
+    editor.commands.focus('end');
+    return editor;
+  }
+
+  /** Вставка из буфера так, как её видит редактор. */
+  function paste(e: Editor, files: File[], text = '') {
+    const event = {
+      preventDefault: () => {},
+      clipboardData: { files, getData: (type: string) => (type === 'text/plain' ? text : '') },
+    } as unknown as ClipboardEvent;
+    return e.view.someProp('handlePaste', (handle) => handle(e.view, event, Slice.empty)) ?? false;
+  }
+
+  const shot = () => new File(['png'], 'image.png', { type: 'image/png' });
+
+  it('картинка из буфера загружается и встаёт ссылкой на вложение', async () => {
+    const upload = vi.fn<UploadImage>(async () => `uploads/${HASH}.png`);
+    const e = withUpload(upload);
+
+    expect(paste(e, [shot()])).toBe(true);
+    await vi.waitFor(() => expect(markdownOf(e)).toBe(`Текст![](microdocs:asset/uploads/${HASH}.png)`));
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(e.getHTML()).toContain(`src="/api/assets/uploads/${HASH}.png"`);
+  });
+
+  it('с текстом в буфере вставляется текст, картинка — лишь снимок документа', () => {
+    const upload = vi.fn<UploadImage>(async () => `uploads/${HASH}.png`);
+    expect(paste(withUpload(upload), [shot()], 'ячейка')).toBe(false);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('не загрузилась — текст не меняется', async () => {
+    const upload = vi.fn<UploadImage>(async () => null);
+    const e = withUpload(upload);
+    paste(e, [shot()]);
+    await vi.waitFor(() => expect(upload).toHaveBeenCalled());
+    expect(markdownOf(e)).toBe('Текст');
+  });
+
+  it('без загрузчика вставка из буфера — как раньше', () => {
+    expect(paste(open('Текст'), [shot()])).toBe(false);
   });
 });
 

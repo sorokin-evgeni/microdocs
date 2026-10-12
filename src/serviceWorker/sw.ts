@@ -6,6 +6,7 @@
  * сборки и версия подставляются при сборке. Новая версия ставится в фоне
  * и ждёт, пока в интерфейсе не нажмут «Обновить» (useAppUpdate).
  */
+import { ASSET_CACHE } from '../storage/assetCache';
 import { routeRequest, type Route } from './routes';
 
 declare const __PRECACHE__: string[];
@@ -30,8 +31,6 @@ declare const self: {
 
 const SHELL_PREFIX = 'microdocs-shell-';
 const SHELL_CACHE = SHELL_PREFIX + __VERSION__;
-/** Вложения переживают смену версий: адрес вложения не меняется. */
-const ASSET_CACHE = 'microdocs-assets';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(__PRECACHE__)));

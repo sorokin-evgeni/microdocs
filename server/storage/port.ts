@@ -24,6 +24,8 @@ export interface BaseStorage {
 
   /** Вложение по пути внутри вложений базы, например `buildin/5f54/Ticket.pdf`. */
   readAsset(baseId: string, path: string): Promise<Asset | null>;
+  /** Записать вложение поверх, без версий: имя загрузки — хеш содержимого. */
+  writeAsset(baseId: string, path: string, body: Uint8Array, contentType: string): Promise<void>;
 }
 
 export type DocRef = { kind: 'tree' } | { kind: 'page'; id: PageId };

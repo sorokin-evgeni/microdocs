@@ -12,7 +12,7 @@ import type { PageId } from '../types';
  * Лежит в localStorage: она крошечная и должна пережить перезагрузку вкладки,
  * иначе после закрытия браузера офлайн-правки остались бы неотправленными.
  */
-export type OutboxEntry = 'tree' | `page:${PageId}` | `del:${PageId}`;
+export type OutboxEntry = 'tree' | `page:${PageId}` | `del:${PageId}` | `asset:${string}`;
 
 interface Stored {
   /** Последнее выданное поколение. */

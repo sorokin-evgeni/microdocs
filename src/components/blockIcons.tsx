@@ -7,6 +7,7 @@ import {
   IconList,
   IconListCheck,
   IconListNumbers,
+  IconPhoto,
   IconQuote,
   IconSeparatorHorizontal,
   IconTable,
@@ -24,5 +25,6 @@ export const BLOCK_ICONS: Record<string, typeof IconH1> = {
   blockquote: IconQuote,
   codeBlock: IconCode,
   table: IconTable,
+  image: IconPhoto,
   horizontalRule: IconSeparatorHorizontal,
 };

@@ -16,7 +16,8 @@ import { IconPlus } from '@tabler/icons-react';
 import { createIndexedDbStore } from './storage/indexedDbStore';
 import { createRemoteStore } from './storage/remoteStore';
 import { createOutbox } from './storage/outbox';
-import { createSyncingStore, type SyncState } from './storage/syncingStore';
+import { createSyncingStore, UploadError, type SyncState } from './storage/syncingStore';
+import { createAssetCache } from './storage/assetCache';
 import { createRescues } from './storage/rescues';
 import { useBase } from './state/useBase';
 import { usePageBody } from './state/usePageBody';
@@ -64,6 +65,7 @@ export function App() {
         remote: createRemoteStore(),
         outbox: createOutbox(LOCAL_CACHE_ID),
         rescues,
+        assets: createAssetCache(),
         onState: setSyncState,
       }),
     [rescues],
@@ -149,6 +151,18 @@ export function App() {
     else if (base.tree?.archive?.some((e) => subtreeIds(e.node).includes(id)))
       window.alert('Страница, на которую ведёт ссылка, в архиве.');
     else window.alert('Страницы, на которую ведёт ссылка, больше нет.');
+  };
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const path = await store.addImage(file);
+      // Без service worker картинку покажет только сервер — ждём, пока она туда доедет.
+      if (!navigator.serviceWorker?.controller) await store.drain();
+      return path;
+    } catch (error) {
+      window.alert(error instanceof UploadError ? error.message : 'Картинка не загрузилась.');
+      return null;
+    }
   };
 
   const handleDelete = (id: PageId) => {
@@ -293,6 +307,7 @@ export function App() {
                 onChange={page.change}
                 onOpenPage={handleOpenPage}
                 handle={editorHandle}
+                onUploadImage={uploadImage}
               />
             )}
           </div>

@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { PageId } from '../types';
-import { editorExtensions, followLink } from './editorSetup';
+import { editorExtensions, followLink, type UploadImage } from './editorSetup';
 import { SlashController } from './slashCommand';
 import { SlashMenu } from './SlashMenu';
 import { BlockHandle } from './BlockHandle';
@@ -20,6 +20,8 @@ interface Props {
   onOpenPage: (id: PageId) => void;
   /** Команды редактору снаружи — например, из заголовка страницы. */
   handle?: Ref<EditorHandle>;
+  /** Загрузить картинку; без него вставить картинку из файла нельзя. */
+  onUploadImage?: UploadImage;
 }
 
 export interface EditorHandle {
@@ -31,17 +33,22 @@ export interface EditorHandle {
  * Редактор показывает готовый текст, а хранит Markdown (FR-19).
  * Разметка применяется по ходу набора силами StarterKit (FR-20).
  */
-export function Editor({ pageId, body, revision = 0, onChange, onOpenPage, handle }: Props) {
+export function Editor({ pageId, body, revision = 0, onChange, onOpenPage, handle, onUploadImage }: Props) {
   // Редактор создаётся раз на страницу, а обработчик у родителя может смениться.
   const openPage = useRef(onOpenPage);
   openPage.current = onOpenPage;
+  const uploadImage = useRef(onUploadImage);
+  uploadImage.current = onUploadImage;
 
   const [slash] = useState(() => new SlashController());
   const box = useRef<HTMLDivElement>(null);
 
   const editor = useEditor(
     {
-      extensions: editorExtensions(slash),
+      extensions: editorExtensions(
+        slash,
+        onUploadImage && ((file) => uploadImage.current?.(file) ?? Promise.resolve(null)),
+      ),
       content: body,
       onUpdate: ({ editor }) => onChange(readMarkdown(editor)),
       editorProps: {

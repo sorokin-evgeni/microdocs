@@ -1,10 +1,12 @@
-import { Extension } from '@tiptap/core';
+import { Extension, type Editor } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { Markdown } from 'tiptap-markdown';
-import { LINK_SCHEME, assetLinkFromUrl, assetUrl, parseLink } from '../domain/links';
+import { LINK_SCHEME, assetLink, assetLinkFromUrl, assetUrl, parseLink } from '../domain/links';
+import { UPLOAD_TYPES } from '../../shared/uploads';
 import type { PageId } from '../types';
 import { serializeTable } from './markdownTable';
 import { slashCommand, type SlashController } from './slashCommand';
@@ -34,6 +36,106 @@ const AssetImage = Image.extend({
     };
   },
 });
+
+/**
+ * Загрузить картинку. Возвращает путь вложения; null — не вышло,
+ * и человеку уже объяснили почему.
+ */
+export type UploadImage = (file: File) => Promise<string | null>;
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    imageUpload: {
+      /** Выбрать картинки с устройства и вставить там, где курсор. */
+      pickImage: () => ReturnType;
+    };
+  }
+}
+
+const IMAGE_ACCEPT = Object.keys(UPLOAD_TYPES).join(',');
+
+const imageFiles = (files: FileList | null | undefined) =>
+  [...(files ?? [])].filter((file) => file.type.startsWith('image/'));
+
+/**
+ * Картинки в текст: вставкой из буфера, перетаскиванием файла и выбором
+ * с устройства (`pickImage`, пункт слэш-меню). Файл сначала загружается,
+ * потом в текст встаёт ссылка на вложение. По одной, в том порядке, как пришли.
+ */
+const ImageUpload = Extension.create<{ upload: UploadImage | null }>({
+  name: 'imageUpload',
+  addOptions: () => ({ upload: null }),
+
+  addCommands() {
+    return {
+      pickImage:
+        () =>
+        ({ editor, dispatch }) => {
+          const upload = this.options.upload;
+          if (!upload) return false;
+          // Без dispatch это лишь проверка can() — диалог не открываем.
+          if (!dispatch) return true;
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = IMAGE_ACCEPT;
+          input.multiple = true;
+          input.addEventListener('change', () => void insertImages(editor, upload, imageFiles(input.files)));
+          input.click();
+          return true;
+        },
+    };
+  },
+
+  addProseMirrorPlugins() {
+    const upload = this.options.upload;
+    const editor = this.editor;
+    if (!upload) return [];
+    return [
+      new Plugin({
+        key: new PluginKey('imageUpload'),
+        props: {
+          // Скопированная в браузере картинка приходит файлом без текста. Если
+          // текст есть — копировали документ (Word, таблицу), и картинка в
+          // буфере — лишь его снимок: вставляем текст, как раньше.
+          handlePaste: (_view, event) => {
+            const data = event.clipboardData;
+            const files = imageFiles(data?.files);
+            if (files.length === 0 || data?.getData('text/plain')) return false;
+            event.preventDefault();
+            void insertImages(editor, upload, files);
+            return true;
+          },
+          handleDrop: (view, event, _slice, moved) => {
+            if (moved) return false;
+            const files = imageFiles(event.dataTransfer?.files);
+            if (files.length === 0) return false;
+            event.preventDefault();
+            const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+            void insertImages(editor, upload, files, at);
+            return true;
+          },
+        },
+      }),
+    ];
+  },
+});
+
+async function insertImages(editor: Editor, upload: UploadImage, files: File[], at?: number) {
+  for (const file of files) {
+    const path = await upload(file);
+    // Пока грузилось, могли уйти на другую страницу — этого редактора уже нет.
+    if (!path || editor.isDestroyed) continue;
+    const content = { type: 'image', attrs: { src: assetLink(path), alt: '' } };
+    const chain = editor.chain().focus();
+    if (at === undefined) {
+      chain.insertContent(content).run();
+    } else {
+      chain.insertContentAt(Math.min(at, editor.state.doc.content.size), content).run();
+      // Следующая — за этой, а не перед ней.
+      at = editor.state.selection.to;
+    }
+  }
+}
 
 const MarkdownTable = Table.extend({
   addStorage() {
@@ -126,9 +228,10 @@ export const BackspaceToText = Extension.create({
 
 /**
  * Расширения редактора. Отдельно от компонента — чтобы разбор и запись Markdown
- * проверялись тестами без React. Слэш-меню — только когда есть кому его показать.
+ * проверялись тестами без React. Слэш-меню — только когда есть кому его показать,
+ * загрузка картинок — когда есть куда грузить.
  */
-export function editorExtensions(slash?: SlashController) {
+export function editorExtensions(slash?: SlashController, upload?: UploadImage) {
   return [
     StarterKit.configure({
       link: {
@@ -153,6 +256,7 @@ export function editorExtensions(slash?: SlashController) {
     TightTaskList,
     BackspaceToText,
     ...(slash ? [slashCommand(slash)] : []),
+    ImageUpload.configure({ upload: upload ?? null }),
     Markdown.configure({
       html: false,
       // Неподдерживаемое не выбрасываем, а оставляем в исходнике (FR-23).

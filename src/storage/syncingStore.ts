@@ -1,6 +1,8 @@
 import type { PageId, Tree } from '../types';
 import { merge3 } from '../domain/merge';
 import { applyOps, type TreeOp } from '../domain/treeOps';
+import { MAX_UPLOAD_BYTES, UPLOAD_TYPES, uploadPath } from '../../shared/uploads';
+import type { AssetCache } from './assetCache';
 import type { LocalStore, PageStore, RemoteStore } from './pageStore';
 import type { OutboxEntry, createOutbox } from './outbox';
 import type { Rescues } from './rescues';
@@ -44,6 +46,21 @@ export interface SyncingStore extends PageStore {
   restoreRescue: (id: PageId) => Promise<void>;
   /** Забыть свою версию, проигравшую конфликт. */
   dismissRescue: (id: PageId) => void;
+  /**
+   * Загрузить картинку. Возвращает путь вложения, как его пишет текст.
+   * Файл сразу ложится в кеш устройства и уходит на сервер очередью;
+   * без кеша — отправляется сразу и без сети не загрузится.
+   * Неподходящий файл — UploadError с понятной причиной.
+   */
+  addImage: (file: Blob) => Promise<string>;
+}
+
+/** Картинку не загрузить; сообщение — для человека. */
+export class UploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UploadError';
+  }
 }
 
 export interface PageChange {
@@ -63,6 +80,8 @@ export interface SyncDeps {
   remote: RemoteStore;
   outbox: Outbox;
   rescues: Rescues;
+  /** Где лежат загруженные, но ещё не отправленные картинки. */
+  assets?: AssetCache;
   onState: (state: SyncState) => void;
   timing?: SyncTiming;
   now?: () => number;
@@ -115,6 +134,7 @@ export function createSyncingStore({
   remote,
   outbox,
   rescues,
+  assets,
   onState,
   timing = DEFAULT_SYNC_TIMING,
   now = Date.now,
@@ -257,6 +277,11 @@ export function createSyncingStore({
     } else if (entry.startsWith('page:')) {
       await pushPage(entry, entry.slice('page:'.length));
       return;
+    } else if (entry.startsWith('asset:')) {
+      const path = entry.slice('asset:'.length);
+      // Нет в кеше — браузер вычистил: отправлять нечего.
+      const blob = await assets?.get(path);
+      if (blob) await remote.putAsset(path, blob);
     } else {
       await remote.deleteBodies([entry.slice('del:'.length)]);
     }
@@ -271,7 +296,10 @@ export function createSyncingStore({
     }
 
     report('ожидает отправки');
-    for (const entry of outbox.list()) {
+    // Картинки — раньше страниц: иначе другое устройство получит текст
+    // со ссылкой на файл, которого на сервере ещё нет.
+    const entries = outbox.list().sort((a, b) => Number(b.startsWith('asset:')) - Number(a.startsWith('asset:')));
+    for (const entry of entries) {
       try {
         await push(entry);
       } catch {
@@ -392,6 +420,30 @@ export function createSyncingStore({
         await local.saveTreeSync({ rev, ops: now.ops });
         return result;
       });
+    },
+
+    async addImage(file) {
+      const mime = file.type;
+      if (!UPLOAD_TYPES[mime]) throw new UploadError('Такой формат не поддерживается: подойдут PNG, JPEG, GIF, WebP и AVIF.');
+      if (file.size > MAX_UPLOAD_BYTES) {
+        throw new UploadError(`Картинка больше ${MAX_UPLOAD_BYTES / 1024 / 1024} МБ.`);
+      }
+      if (!globalThis.crypto?.subtle) throw new UploadError('Загружать картинки можно только по https.');
+      const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+      const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      const path = uploadPath(hex, mime)!;
+
+      if (assets?.available) {
+        await assets.put(path, file);
+        enqueue(`asset:${path}`);
+        return path;
+      }
+      try {
+        await remote.putAsset(path, file);
+      } catch {
+        throw new UploadError('Нет связи: картинка не загрузилась.');
+      }
+      return path;
     },
 
     async saveTree(tree: Tree) {

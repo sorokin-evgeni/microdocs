@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { PageId, Tree } from '../shared/types';
 import type { Asset, BaseStorage, DocRef, WriteMeta } from './storage/port';
 import { createApi, type ApiOptions } from './api';
 import { BURST_WINDOW } from './versioning';
+import { MAX_UPLOAD_BYTES } from '../shared/uploads';
 
 interface MemoryVersion {
   versionId: string;
@@ -63,6 +65,9 @@ function memoryStorage(): BaseStorage & {
     async readAsset(baseId: string, path: string) {
       askedAssets.push(`${baseId}/${path}`);
       return assets.get(`${baseId}/${path}`) ?? null;
+    },
+    async writeAsset(baseId: string, path: string, body: Uint8Array, contentType: string) {
+      assets.set(`${baseId}/${path}`, { body, contentType });
     },
     history: (baseId: string, ref: DocRef) =>
       (docs.get(key(baseId, ref)) ?? []).map(({ body, meta }) => ({ body, meta })),
@@ -262,8 +267,68 @@ describe('HTTP API', () => {
       expect((await call(memoryStorage(), 'GET', '/api/assets/a/нет.png')).status).toBe(404);
     });
 
-    it('записывать через API нельзя — 405', async () => {
-      expect((await call(memoryStorage(), 'PUT', '/api/assets/a/x.png', 'x')).status).toBe(405);
+    describe('загрузка', () => {
+      const sha = (body: string) => createHash('sha256').update(body, 'utf8').digest('hex');
+
+      it('картинка под именем-хешем записывается и отдаётся', async () => {
+        const storage = memoryStorage();
+        const path = `uploads/${sha('PNG')}.png`;
+        const put = await call(storage, 'PUT', `/api/assets/${path}`, 'PNG');
+        expect(put.status).toBe(200);
+
+        const get = await call(storage, 'GET', `/api/assets/${path}`);
+        expect(get.body).toBe('PNG');
+        expect(get.contentType).toBe('image/png');
+        expect(get.headers['content-disposition']).toMatch(/^inline;/);
+      });
+
+      it('повторная отправка того же файла — снова 200', async () => {
+        const storage = memoryStorage();
+        const url = `/api/assets/uploads/${sha('JPG')}.jpg`;
+        expect((await call(storage, 'PUT', url, 'JPG')).status).toBe(200);
+        expect((await call(storage, 'PUT', url, 'JPG')).status).toBe(200);
+      });
+
+      it('имя не от этого содержимого — 400, ничего не пишется', async () => {
+        const storage = memoryStorage();
+        const url = `/api/assets/uploads/${sha('настоящее')}.png`;
+        expect((await call(storage, 'PUT', url, 'подменённое')).status).toBe(400);
+        expect((await call(storage, 'GET', url)).status).toBe(404);
+      });
+
+      it('вне uploads/, не хеш или не картинка — 403', async () => {
+        const storage = memoryStorage();
+        for (const url of [
+          `/api/assets/a/${sha('x')}.png`,
+          '/api/assets/uploads/x.png',
+          `/api/assets/uploads/${sha('x')}.svg`,
+          `/api/assets/uploads/${sha('x')}.html`,
+          `/api/assets/uploads/${sha('x')}.PNG`,
+        ]) {
+          expect((await call(storage, 'PUT', url, 'x')).status, url).toBe(403);
+        }
+      });
+
+      it('импортированное вложение не перезаписать — 403', async () => {
+        const storage = memoryStorage();
+        storage.putAsset('владелец', 'buildin/a/image.png', 'было');
+        expect((await call(storage, 'PUT', '/api/assets/buildin/a/image.png', 'стало')).status).toBe(403);
+        expect((await call(storage, 'GET', '/api/assets/buildin/a/image.png')).body).toBe('было');
+      });
+
+      it('больше предела — 413', async () => {
+        const big = 'x'.repeat(MAX_UPLOAD_BYTES + 1);
+        const result = await call(memoryStorage(), 'PUT', `/api/assets/uploads/${sha(big)}.png`, big);
+        expect(result.status).toBe(413);
+      });
+
+      it('пишется в свою базу', async () => {
+        const storage = memoryStorage();
+        const url = `/api/assets/uploads/${sha('моё')}.png`;
+        await call(storage, 'PUT', url, 'моё', 'первый');
+        expect((await call(storage, 'GET', url, '', 'второй')).status).toBe(404);
+        expect((await call(storage, 'GET', url, '', 'первый')).status).toBe(200);
+      });
     });
 
     it('обход пути и мусор в адресе отвергаются, до хранилища не доходя', async () => {

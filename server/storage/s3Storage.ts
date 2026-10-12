@@ -14,7 +14,7 @@ import type { BaseStorage, DocMeta, DocRef, WriteMeta } from './port';
  *
  *   <baseId>/tree.json       структура
  *   <baseId>/pages/<id>.md   тело страницы
- *   <baseId>/assets/<путь>   вложения; пока их кладут только импорты
+ *   <baseId>/assets/<путь>   вложения: импорты и загрузки (uploads/)
  *
  * Ключ к бакету живёт только на сервере и в браузер не попадает (NFR-17).
  * История версий держится на версионировании объектов (NFR-7), поэтому
@@ -107,6 +107,16 @@ export function createS3Storage(): BaseStorage {
         if (isNotFound(error)) return null;
         throw error;
       }
+    },
+    async writeAsset(baseId, path, body, contentType) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: assetKey(baseId, path),
+          Body: body,
+          ContentType: contentType,
+        }),
+      );
     },
   };
 }

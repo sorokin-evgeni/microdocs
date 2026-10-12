@@ -1,5 +1,6 @@
 import type { PageId, Tree } from '../types';
 import type { FetchedPage, FetchedTree, PutResult, PutTreeResult, RemoteStore } from './pageStore';
+import { assetUrl } from '../domain/links';
 import { deviceId } from './device';
 
 /**
@@ -119,6 +120,15 @@ export function createRemoteStore(): RemoteStore {
           : { kind: 'conflict', current: null };
       }
       throw new Error(`Дерево не записалось: ${res.status}`);
+    },
+
+    async putAsset(path, blob) {
+      const res = await fetch(assetUrl(path), {
+        method: 'PUT',
+        headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+        body: blob,
+      });
+      if (!res.ok) throw new Error(`Картинка не загрузилась: ${res.status}`);
     },
   };
 }

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import type { PageId, Tree } from '../types';
+import { MAX_UPLOAD_BYTES } from '../../shared/uploads';
+import type { AssetCache } from './assetCache';
 import type { LocalStore, PageBase, RemoteStore, TreeSync } from './pageStore';
 import { createRescues } from './rescues';
 import { createOutbox } from './outbox';
@@ -7,6 +10,7 @@ import {
   BaseUnavailableError,
   createSyncingStore,
   PREFETCH_LIMIT,
+  UploadError,
   type PageChange,
   type SyncState,
   type SyncTiming,
@@ -23,6 +27,7 @@ function memoryStore() {
   const bodies = new Map<PageId, string>();
   const revs = new Map<PageId, number>();
   const bases = new Map<PageId, PageBase>();
+  const assets = new Map<string, Blob>();
   const state = { offline: false };
 
   const guard = () => {
@@ -99,6 +104,10 @@ function memoryStore() {
       revs.set(id, rev);
       return { kind: 'saved', rev };
     },
+    async putAsset(path, blob) {
+      guard();
+      assets.set(path, blob);
+    },
   };
 
   /** Запись с другого устройства — прямо на «сервер», мимо нашей очереди. */
@@ -118,7 +127,7 @@ function memoryStore() {
     state,
     writeFromElsewhere,
     writeTreeFromElsewhere,
-    peek: () => ({ tree, treeRev, treeSync, bodies, revs, bases }),
+    peek: () => ({ tree, treeRev, treeSync, bodies, revs, bases, assets }),
   };
 }
 
@@ -128,10 +137,28 @@ const дерево = (title: string): Tree => ({
 
 let seq = 0;
 
+/** Кеш картинок на устройстве в памяти. */
+function memoryAssetCache(available = true): AssetCache & { files: Map<string, Blob> } {
+  const files = new Map<string, Blob>();
+  return {
+    available,
+    files,
+    async put(path, blob) {
+      files.set(path, blob);
+    },
+    async get(path) {
+      return files.get(path) ?? null;
+    },
+  };
+}
+
 describe('синхронизация с сервером', () => {
   beforeEach(() => localStorage.clear());
 
-  function setup(timing: SyncTiming = { pushDelay: 0, pushInterval: 0 }) {
+  function setup(
+    timing: SyncTiming = { pushDelay: 0, pushInterval: 0 },
+    assets: AssetCache = memoryAssetCache(),
+  ) {
     const local = memoryStore();
     const remote = memoryStore();
     // У каждого теста своя очередь: отложенная отправка прошлого теста
@@ -145,6 +172,7 @@ describe('синхронизация с сервером', () => {
       remote: remote.store,
       outbox,
       rescues,
+      assets,
       onState: (s) => states.push(s),
       timing,
     });
@@ -681,6 +709,77 @@ describe('синхронизация с сервером', () => {
       const fetch = vi.spyOn(remote.store, 'fetchPage');
       await store.prefetchPages(Array.from({ length: PREFETCH_LIMIT + 10 }, (_, i) => `p${i}`));
       expect(fetch).toHaveBeenCalledTimes(PREFETCH_LIMIT);
+    });
+  });
+
+  describe('картинки', () => {
+    const png = (text: string) => new Blob([text], { type: 'image/png' });
+    const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+
+    it('путь — по хешу содержимого, файл сразу на устройстве и уезжает очередью', async () => {
+      const assets = memoryAssetCache();
+      const { remote, store, outbox } = setup(undefined, assets);
+      remote.state.offline = true;
+
+      const path = await store.addImage(png('пиксели'));
+      expect(path).toBe(`uploads/${sha('пиксели')}.png`);
+      expect(assets.files.has(path)).toBe(true);
+      await store.drain();
+      expect(outbox.list()).toEqual([`asset:${path}`]);
+
+      remote.state.offline = false;
+      await store.drain();
+      expect(await remote.peek().assets.get(path)?.text()).toBe('пиксели');
+      expect(outbox.isEmpty()).toBe(true);
+    });
+
+    it('уезжают раньше страниц, которые на них ссылаются', async () => {
+      const { remote, store } = setup();
+      remote.state.offline = true;
+      await store.saveBody('p1', 'до картинки');
+      const path = await store.addImage(png('x'));
+      await store.saveBody('p1', `![](microdocs:asset/${path})`);
+
+      remote.state.offline = false;
+      const order: string[] = [];
+      vi.spyOn(remote.store, 'putAsset').mockImplementation(async () => void order.push('asset'));
+      vi.spyOn(remote.store, 'putPage').mockImplementation(async () => {
+        order.push('page');
+        return { kind: 'saved', rev: 1 };
+      });
+      await store.drain();
+      expect(order).toEqual(['asset', 'page']);
+    });
+
+    it('вычищенную браузером картинку не шлёт и из очереди убирает', async () => {
+      const assets = memoryAssetCache();
+      const { remote, store, outbox } = setup(undefined, assets);
+      remote.state.offline = true;
+      await store.addImage(png('x'));
+      assets.files.clear();
+
+      remote.state.offline = false;
+      await store.drain();
+      expect(remote.peek().assets.size).toBe(0);
+      expect(outbox.isEmpty()).toBe(true);
+    });
+
+    it('не картинка или слишком большая — UploadError, в очередь ничего', async () => {
+      const { store, outbox } = setup();
+      await expect(store.addImage(new Blob(['<svg/>'], { type: 'image/svg+xml' }))).rejects.toBeInstanceOf(UploadError);
+      const big = new Blob([new Uint8Array(MAX_UPLOAD_BYTES + 1)], { type: 'image/png' });
+      await expect(store.addImage(big)).rejects.toBeInstanceOf(UploadError);
+      expect(outbox.isEmpty()).toBe(true);
+    });
+
+    it('без кеша на устройстве — сразу на сервер, без сети — UploadError', async () => {
+      const { remote, store, outbox } = setup(undefined, memoryAssetCache(false));
+      const path = await store.addImage(png('сразу'));
+      expect(remote.peek().assets.has(path)).toBe(true);
+      expect(outbox.isEmpty()).toBe(true);
+
+      remote.state.offline = true;
+      await expect(store.addImage(png('не выйдет'))).rejects.toBeInstanceOf(UploadError);
     });
   });
 });

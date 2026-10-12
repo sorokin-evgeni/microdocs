@@ -1,12 +1,16 @@
 package ru.e40in.microdocs;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.security.KeyChain;
 import android.view.View;
 import android.webkit.ClientCertRequest;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -28,6 +32,7 @@ import java.security.cert.X509Certificate;
 public class MainActivity extends Activity {
     private static final String PREFS = "microdocs";
     private static final String CERT_ALIAS = "certAlias";
+    private static final int PICK_FILES = 1;
 
     private WebView web;
     private View errorView;
@@ -38,6 +43,8 @@ public class MainActivity extends Activity {
     private String failedUrl;
     /** Что было с сертификатом в последней попытке — для экрана ошибки. */
     private volatile String certNote = "";
+    /** Ждёт выбора файлов для <input type=file>: загрузка картинок в редакторе. */
+    private ValueCallback<Uri[]> pickedFiles;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -56,6 +63,7 @@ public class MainActivity extends Activity {
         // localStorage: в нём очередь неотправленных правок.
         settings.setDomStorageEnabled(true);
         web.setWebViewClient(new Client());
+        web.setWebChromeClient(new Chrome());
 
         // Пересоздание окна (например, смена светлой темы на тёмную) — та же страница.
         if (state == null || web.restoreState(state) == null) web.loadUrl(BuildConfig.APP_URL);
@@ -73,6 +81,37 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (web.canGoBack()) web.goBack();
         else super.onBackPressed();
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        if (request != PICK_FILES || pickedFiles == null) {
+            super.onActivityResult(request, result, data);
+            return;
+        }
+        pickedFiles.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data));
+        pickedFiles = null;
+    }
+
+    /** WebView сам выбор файлов не открывает: без этого «Картинка» в редакторе ничего бы не делала. */
+    private class Chrome extends WebChromeClient {
+        @Override
+        public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+            // Прежний выбор не завершился — отвечаем ему «ничего», иначе WebView больше не спросит.
+            if (pickedFiles != null) pickedFiles.onReceiveValue(null);
+            pickedFiles = callback;
+            Intent intent = params.createIntent();
+            if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            }
+            try {
+                startActivityForResult(intent, PICK_FILES);
+            } catch (ActivityNotFoundException e) {
+                pickedFiles = null;
+                return false;
+            }
+            return true;
+        }
     }
 
     private void showError(int title, int text, String detail) {

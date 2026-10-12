@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash } from 'node:crypto';
 import { basename, extname } from 'node:path';
 import type { Tree } from '../shared/types';
+import { MAX_UPLOAD_BYTES, isUploadPath } from '../shared/uploads';
 import type { BaseStorage, DocRef } from './storage/port';
 import { resolveBaseId } from './identity';
 import {
@@ -19,6 +21,7 @@ import {
  *   GET|PUT        /api/tree
  *   GET|PUT|DELETE /api/pages/:id
  *   GET|HEAD       /api/assets/<путь>
+ *   PUT            /api/assets/uploads/<sha256>.<ext>   (см. shared/uploads.ts)
  *
  * База в адресе не упоминается намеренно: её определяет сертификат клиента,
  * иначе можно было бы попросить чужую.
@@ -288,6 +291,10 @@ async function handleAsset(
   baseId: string,
   path: string,
 ) {
+  if (req.method === 'PUT') {
+    await putUpload(req, res, storage, baseId, path);
+    return;
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(res, 405, { error: 'Метод не поддерживается' });
     return;
@@ -311,6 +318,36 @@ async function handleAsset(
     `${INLINE.has(ext) ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeRfc5987(basename(path))}`,
   );
   res.end(req.method === 'HEAD' ? undefined : asset.body);
+}
+
+/**
+ * Загрузка картинки. Имя проверяется по содержимому: под именем-хешем лежат
+ * ровно эти байты, поэтому перезапись безопасна и условий записи не нужно.
+ * Импортированные вложения так не перезаписать — их имена не хеши.
+ */
+async function putUpload(
+  req: IncomingMessage,
+  res: ServerResponse,
+  storage: BaseStorage,
+  baseId: string,
+  path: string,
+) {
+  if (!isUploadPath(path)) {
+    send(res, 403, { error: 'Загружать можно только картинки в uploads/ под именем-хешем' });
+    return;
+  }
+  const body = await readBytes(req, MAX_UPLOAD_BYTES);
+  if (body === null) {
+    send(res, 413, { error: 'Файл слишком большой' });
+    return;
+  }
+  const hash = createHash('sha256').update(body).digest('hex');
+  if (basename(path, extname(path)) !== hash) {
+    send(res, 400, { error: 'Имя не совпадает с содержимым' });
+    return;
+  }
+  await storage.writeAsset(baseId, path, body, ASSET_TYPES[extname(path)]!);
+  send(res, 200, { ok: true });
 }
 
 /**
@@ -349,6 +386,24 @@ function readBody(req: IncomingMessage): Promise<string> {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Тело целиком; null — длиннее `limit`. Лишнее дочитывается и выбрасывается:
+ * оборви мы запрос, клиент не получил бы и ответа с причиной.
+ */
+function readBytes(req: IncomingMessage, limit: number): Promise<Buffer | null> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= limit) chunks.push(chunk);
+      else chunks.length = 0;
+    });
+    req.on('end', () => resolve(size > limit ? null : Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }

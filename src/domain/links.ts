@@ -1,7 +1,8 @@
 import type { PageId } from '../types';
 
 /**
- * Внутренние ссылки в тексте страниц. Их пишут импорты (scripts/import-*.mjs):
+ * Внутренние ссылки в тексте страниц. Их пишут импорты (scripts/import-*.mjs)
+ * и загрузка картинок в редакторе:
  *
  *   microdocs:page/<id>     — на другую страницу базы;
  *   microdocs:asset/<путь>  — на вложение в бакете.
@@ -28,6 +29,11 @@ export function linkedPageIds(markdown: string): PageId[] {
   const ids = new Set<PageId>();
   for (const match of markdown.matchAll(/microdocs:page\/([A-Za-z0-9._-]+)/g)) ids.add(match[1]!);
   return [...ids];
+}
+
+/** Ссылка на вложение, как её хранит текст. */
+export function assetLink(path: string): string {
+  return ASSET_PREFIX + path;
 }
 
 /** Адрес, по которому сервер отдаёт вложение. */
