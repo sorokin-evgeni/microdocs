@@ -67,9 +67,9 @@ export function BlockHandle({ editor, container }: { editor: Editor; container: 
   // Мышь: блок под указателем. Слева от текста — тоже он: ручка там и живёт.
   useEffect(() => {
     const box = container.current;
-    if (!box || touch) return;
+    if (!box || touch || editor.isDestroyed) return;
     const onMove = (event: MouseEvent) => {
-      if (frozen.current) return;
+      if (frozen.current || editor.isDestroyed) return;
       clearTimeout(hideTimer.current);
       const rect = editor.view.dom.getBoundingClientRect();
       if (event.clientY < rect.top || event.clientY > rect.bottom) return;
@@ -89,14 +89,17 @@ export function BlockHandle({ editor, container }: { editor: Editor; container: 
     const onKey = () => {
       if (!frozen.current) setPlaced(null);
     };
+    // Узел берём сейчас: при уходе со страницы редактор уничтожается раньше,
+    // чем снимаются обработчики, и editor.view тогда уже бросает исключение.
+    const dom = editor.view.dom;
     box.addEventListener('mousemove', onMove);
     box.addEventListener('mouseleave', onLeave);
-    editor.view.dom.addEventListener('keydown', onKey);
+    dom.addEventListener('keydown', onKey);
     return () => {
       clearTimeout(hideTimer.current);
       box.removeEventListener('mousemove', onMove);
       box.removeEventListener('mouseleave', onLeave);
-      editor.view.dom.removeEventListener('keydown', onKey);
+      dom.removeEventListener('keydown', onKey);
     };
   }, [editor, container, touch, place]);
 
