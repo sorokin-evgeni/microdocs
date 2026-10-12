@@ -69,3 +69,33 @@ describe('Enter в заголовке', () => {
     expect(document.querySelectorAll('.ProseMirror > p')).toHaveLength(1);
   });
 });
+
+describe('переход на другую страницу', () => {
+  const editorFor = (pageId: string, body: string) => (
+    <Editor pageId={pageId} body={body} onChange={vi.fn()} onOpenPage={vi.fn()} />
+  );
+
+  it('редактор пересоздаётся с текстом новой страницы, ничего не падает', async () => {
+    const { rerenderUI } = renderUI(editorFor('a', 'Текст первой'));
+    await screen.findByText('Текст первой');
+
+    // Прежний редактор уничтожается раньше, чем ручка блока снимает свои
+    // обработчики: обращение к его view тут роняло всё приложение.
+    rerenderUI(editorFor('b', 'Текст второй'));
+    await screen.findByText('Текст второй');
+    expect(screen.queryByText('Текст первой')).toBeNull();
+
+    // Ручка блока жива и на новой странице: движение мыши не бросает.
+    fireEvent.mouseMove(document.querySelector('.md-editor')!, { clientX: 10, clientY: 10 });
+    fireEvent.keyDown(document.querySelector('.ProseMirror')!, { key: 'a' });
+  });
+
+  it('туда и обратно несколько раз подряд', async () => {
+    const { rerenderUI } = renderUI(editorFor('a', 'Первая'));
+    for (const [id, text] of [['b', 'Вторая'], ['a', 'Первая'], ['c', 'Третья']] as const) {
+      rerenderUI(editorFor(id, text));
+      await screen.findByText(text);
+    }
+    expect(document.querySelectorAll('.ProseMirror')).toHaveLength(1);
+  });
+});
