@@ -242,9 +242,50 @@ body {
   border-radius: 4px;
 }
 
+/* Обёртка с ручкой размера (imageView.ts). Ширину задаёт сама картинка. */
+.md-editor .ProseMirror .md-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+  line-height: 0;
+}
+
+.md-editor .ProseMirror .md-image.ProseMirror-selectednode img,
 .md-editor .ProseMirror img.ProseMirror-selectednode {
   outline: 2px solid var(--doc-accent);
   outline-offset: 2px;
+}
+
+.md-editor .ProseMirror .md-image-handle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--doc-accent);
+  border-radius: 3px;
+  background: var(--mantine-color-body);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+/* На телефоне наведения нет: ручка появляется у выделенной касанием картинки. */
+.md-editor .ProseMirror[contenteditable='true'] .md-image:hover .md-image-handle,
+.md-editor .ProseMirror[contenteditable='true'] .md-image.ProseMirror-selectednode .md-image-handle,
+.md-editor .ProseMirror .md-image.is-resizing .md-image-handle {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .md-editor .ProseMirror .md-image-handle {
+    width: 20px;
+    height: 20px;
+    right: -9px;
+    bottom: -9px;
+  }
 }
 
 /* Таблицы. Широкая прокручивается внутри колонки, а не раздвигает её. */

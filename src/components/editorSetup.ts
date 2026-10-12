@@ -6,6 +6,7 @@ import Image from '@tiptap/extension-image';
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { Markdown } from 'tiptap-markdown';
 import { LINK_SCHEME, assetLink, assetLinkFromUrl, assetUrl, parseLink } from '../domain/links';
+import { displaySrc, imageView, splitWidth, withWidth } from './imageView';
 import { UPLOAD_TYPES } from '../../shared/uploads';
 import type { PageId } from '../types';
 import { serializeTable } from './markdownTable';
@@ -15,6 +16,9 @@ import { slashCommand, type SlashController } from './slashCommand';
  * Картинка хранит в документе адрес как в Markdown — `microdocs:asset/<путь>`, —
  * а браузеру показывает рабочий `/api/assets/<путь>`. Храни документ адрес сервера,
  * первая же правка записала бы его в текст вместо ссылки на вложение.
+ *
+ * Ширина — отдельный атрибут, а в Markdown едет хвостом адреса (`#w=320`,
+ * см. imageView.ts). Высоту не храним: она всегда по пропорциям.
  */
 const AssetImage = Image.extend({
   addAttributes() {
@@ -24,14 +28,46 @@ const AssetImage = Image.extend({
         default: null,
         // Скопированная из редактора картинка приходит с адресом сервера — возвращаем ссылку.
         parseHTML: (element: HTMLElement) => {
-          const src = element.getAttribute('src');
-          return (src && assetLinkFromUrl(src)) ?? src;
+          const raw = element.getAttribute('src');
+          if (!raw) return raw;
+          const { src } = splitWidth(raw);
+          return assetLinkFromUrl(src) ?? src;
         },
-        renderHTML: (attributes: { src?: string | null }) => {
-          const src = attributes.src ?? '';
-          const target = parseLink(src);
-          return { src: target.kind === 'asset' ? assetUrl(target.path) : src };
+        renderHTML: (attributes: { src?: string | null }) => ({ src: displaySrc(attributes.src ?? '') }),
+      },
+      width: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const fromSrc = splitWidth(element.getAttribute('src') ?? '').width;
+          const attr = Number(element.getAttribute('width'));
+          return fromSrc ?? (attr > 0 ? Math.round(attr) : null);
         },
+        renderHTML: (attributes: { width?: number | null }) =>
+          attributes.width ? { width: attributes.width } : {},
+      },
+      height: { default: null, parseHTML: () => null, renderHTML: () => ({}) },
+    };
+  },
+  addNodeView() {
+    return imageView();
+  },
+  addStorage() {
+    return {
+      ...this.parent?.(),
+      markdown: {
+        // Как у prosemirror-markdown, только с шириной в адресе.
+        serialize(
+          state: { write: (text: string) => void; esc: (text: string) => string },
+          node: { attrs: { src?: string | null; alt?: string | null; title?: string | null; width?: number | null } },
+        ) {
+          const { src, alt, title, width } = node.attrs;
+          state.write(
+            `![${state.esc(alt || '')}](${withWidth(src ?? '', width).replace(/[()]/g, '\\$&')}` +
+              (title ? ` "${title.replace(/"/g, '\\"')}"` : '') +
+              ')',
+          );
+        },
+        parse: {},
       },
     };
   },
@@ -100,7 +136,7 @@ const ImageUpload = Extension.create<{ upload: UploadImage | null }>({
           handlePaste: (_view, event) => {
             const data = event.clipboardData;
             const files = imageFiles(data?.files);
-            if (files.length === 0 || data?.getData('text/plain')) return false;
+            if (files.length === 0 || hasOwnText(data?.getData('text/plain') ?? '', files)) return false;
             event.preventDefault();
             void insertImages(editor, upload, files);
             return true;
@@ -119,6 +155,18 @@ const ImageUpload = Extension.create<{ upload: UploadImage | null }>({
     ];
   },
 });
+
+/**
+ * В буфере есть текст сам по себе, а не только имена файлов: скопированный
+ * в Finder или Проводнике файл приходит вместе со своим именем как текстом.
+ */
+export function hasOwnText(text: string, files: File[]): boolean {
+  const names = new Set(files.map((file) => file.name));
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line && !names.has(line) && !names.has(line.split(/[\\/]/).pop() ?? ''));
+}
 
 async function insertImages(editor: Editor, upload: UploadImage, files: File[], at?: number) {
   for (const file of files) {

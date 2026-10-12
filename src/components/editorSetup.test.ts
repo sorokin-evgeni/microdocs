@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { DOMParser, Slice } from '@tiptap/pm/model';
-import { editorExtensions, type UploadImage } from './editorSetup';
+import { editorExtensions, hasOwnText, type UploadImage } from './editorSetup';
+import { splitWidth, withWidth } from './imageView';
 
 const PAGE = '[Билеты](microdocs:page/6c55bbc7-0ee5-4667-af33-bb8a02be42ba)';
 const ASSET = '[Ticket.pdf](microdocs:asset/buildin/5f5480991b6d/Ticket.pdf)';
@@ -138,6 +139,13 @@ describe('загрузка картинок', () => {
     expect(markdownOf(e)).toBe('Текст');
   });
 
+  it('файл, скопированный в Finder, загружается, хоть с ним и приходит имя', async () => {
+    const upload = vi.fn<UploadImage>(async () => `uploads/${HASH}.png`);
+    const e = withUpload(upload);
+    expect(paste(e, [shot()], 'image.png')).toBe(true);
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+  });
+
   it('без загрузчика вставка из буфера — как раньше', () => {
     expect(paste(open('Текст'), [shot()])).toBe(false);
   });
@@ -246,5 +254,72 @@ describe('таблицы в редакторе', () => {
     expect(saved).not.toContain('[table]');
     expect(saved).toContain('первый');
     expect(saved).toContain('второй');
+  });
+});
+
+describe('текст рядом с файлами в буфере', () => {
+  const files = [new File([''], 'Снимок экрана.png'), new File([''], 'фото.jpg')];
+
+  it('только имена файлов — своего текста нет', () => {
+    expect(hasOwnText('', files)).toBe(false);
+    expect(hasOwnText('Снимок экрана.png', files)).toBe(false);
+    expect(hasOwnText('Снимок экрана.png\nфото.jpg\n', files)).toBe(false);
+    expect(hasOwnText('/Users/me/Desktop/фото.jpg', files)).toBe(false);
+  });
+
+  it('любой другой текст — свой', () => {
+    expect(hasOwnText('ячейка', files)).toBe(true);
+    expect(hasOwnText('фото.jpg\nподпись', files)).toBe(true);
+  });
+});
+
+describe('ширина картинки', () => {
+  const SRC = 'microdocs:asset/uploads/abc.png';
+
+  it('хвост #w= отделяется от адреса и приклеивается обратно', () => {
+    expect(splitWidth(`${SRC}#w=320`)).toEqual({ src: SRC, width: 320 });
+    expect(splitWidth(SRC)).toEqual({ src: SRC, width: null });
+    expect(splitWidth('https://x.ru/a.png#top')).toEqual({ src: 'https://x.ru/a.png#top', width: null });
+    expect(withWidth(SRC, 320)).toBe(`${SRC}#w=320`);
+    expect(withWidth(SRC, null)).toBe(SRC);
+  });
+
+  it('из Markdown — атрибут ширины, браузеру — адрес без хвоста', () => {
+    const e = open(`![](${SRC}#w=320)`);
+    const image = e.state.doc.firstChild!.firstChild!;
+    expect(image.attrs.width).toBe(320);
+    expect(image.attrs.src).toBe(SRC);
+    expect(e.getHTML()).toContain('src="/api/assets/uploads/abc.png"');
+    expect(e.getHTML()).toContain('width="320"');
+  });
+
+  it('переживает правку страницы', () => {
+    const e = open(`Текст ![подпись](${SRC}#w=320)`);
+    e.commands.insertContentAt(1, 'Новый ');
+    expect(markdownOf(e)).toBe(`Новый Текст ![подпись](${SRC}#w=320)`);
+  });
+
+  it('новая ширина записывается, сброс убирает хвост', () => {
+    const e = open(`![](${SRC})`);
+    e.chain().setNodeSelection(1).updateAttributes('image', { width: 200 }).run();
+    expect(markdownOf(e)).toBe(`![](${SRC}#w=200)`);
+    e.chain().setNodeSelection(1).updateAttributes('image', { width: null }).run();
+    expect(markdownOf(e)).toBe(`![](${SRC})`);
+  });
+
+  it('у внешней картинки — так же', () => {
+    const e = open('![](https://example.com/a.png#w=100)');
+    expect(e.getHTML()).toContain('src="https://example.com/a.png"');
+    e.commands.insertContentAt(e.state.doc.content.size - 1, ' ');
+    expect(markdownOf(e)).toContain('![](https://example.com/a.png#w=100)');
+  });
+
+  it('скопированная из редактора картинка сохраняет ширину', () => {
+    const e = open('');
+    const clipboard = document.createElement('div');
+    clipboard.innerHTML = '<p><img src="/api/assets/uploads/abc.png" width="240"></p>';
+    const pasted = DOMParser.fromSchema(e.schema).parse(clipboard);
+    e.view.dispatch(e.state.tr.replaceWith(0, e.state.doc.content.size, pasted.content));
+    expect(markdownOf(e)).toBe(`![](${SRC}#w=240)`);
   });
 });
